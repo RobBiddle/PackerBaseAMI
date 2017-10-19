@@ -1,0 +1,44 @@
+<powershell> # XML Tag for EC2ConfigService
+
+# Modify BundleConfig.xml
+$EC2SettingsFile = "C:\Program Files\Amazon\Ec2ConfigService\Settings\BundleConfig.xml"
+$xml = [xml](get-content $EC2SettingsFile)
+$xml_switches = $xml.SelectSingleNode("//Switches[1]")
+foreach ($switch in $xml_switches) {
+    # If using Packer to shutdown instance (EBS Builder setting: disable_stop_instance not specified OR set to False)
+    #$switch.'#text' = "/quit /oobe /generalize"
+    # If NOT using Packer to shutdown instance (EBS Builder setting: disable_stop_instance set to True)
+    $switch.'#text' = "/shutdown /oobe /generalize"
+}
+$xmlElement = $xml.get_DocumentElement()
+$xmlElementToModify = $xmlElement.Property
+foreach ($element in $xmlElementToModify.Property) {
+    if ($element.Name -eq "SetPasswordAfterSysprep") {
+        $element.Value = "Enabled"
+    }
+}
+$xml.Save($EC2SettingsFile)
+
+# Modify Config.xml
+$EC2SettingsFile = "C:\Program Files\Amazon\Ec2ConfigService\Settings\Config.xml"
+$xml = [xml](get-content $EC2SettingsFile)
+$xmlElement = $xml.get_DocumentElement()
+$xmlElementToModify = $xmlElement.Plugins
+foreach ($element in $xmlElementToModify.Plugin) {
+    if ($element.name -eq "Ec2SetPassword") {
+        $element.State = "Disabled"
+    }
+    elseif ($element.name -eq "Ec2SetComputerName") {
+        $element.State = "Enabled"
+    }
+    elseif ($element.name -eq "Ec2HandleUserData") {
+        $element.State = "Enabled"
+    }
+}
+$xml.Save($EC2SettingsFile)
+
+# Run Sysprep via Ec2Config.exe
+Set-Location "$env:ProgramFiles\Amazon\Ec2ConfigService\"
+$command = ".\Ec2Config.exe -sysprep"
+Invoke-Expression -Command $command
+</powershell>
