@@ -38,9 +38,10 @@ You have two options:
   1. Install [Packer](https://packer.io) from the main site: [https://packer.io](https://packer.io)
   2. Or use Chocolatey to install Packer:
      - Install Chocolatey: [https://chocolatey.org/install](https://chocolatey.org/install)
-     - Install Packer package via Chocolatey: ```PowerShell
-      choco install packer
-      ```
+     - Install Packer package via Chocolatey: 
+       ```PowerShell
+       choco install packer
+       ```
 
 - ##### Install [PackerBaseAMI](https://github.com/RobBiddle/PackerBaseAMI) & Requirements:
   (Assumes you have PowerShellGet and access to PowerShellGallery.com)
