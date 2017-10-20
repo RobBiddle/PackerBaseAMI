@@ -8,8 +8,8 @@
 There are a few problems associated with utilizing the Amazon provided Base Windows AMI images:
 
 1. The Amazon provided Base Windows AMI images are frequently depricated and deregistered.
-  - This causes problems if you are using those AMIs in CloudFormation stacks, as you may not be able to update the stack after the AMI is deregistered.  This problem is resolved by creating an new AMI based on the Amazon provided image.
-  - The AMI produced by this module will remain in your account until you choose to remove it.
+   - This causes problems if you are using those AMIs in CloudFormation stacks, as you may not be able to update the stack after the AMI is deregistered.  This problem is resolved by creating an new AMI based on the Amazon provided image.
+   - The AMI produced by this module will remain in your account until you choose to remove it.
 
 2. The Amazon provided Base Windows AMI images cannot be directly copied via the AWS API (cli / Powershell)
    - The Amazon recommended process is a manual one utilizing the web console via a browser, which is highly inefficient and not well suited to automation
