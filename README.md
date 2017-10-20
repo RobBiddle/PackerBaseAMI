@@ -47,11 +47,11 @@ You have two options:
   (Assumes you have PowerShellGet and access to PowerShellGallery.com)
 
   - [AWSPowerShell](https://www.powershellgallery.com/packages/AWSPowerShell) PowerShell Module
-    - ```PowerShell
+      ```PowerShell
       Install-Module AWSPowerShell
       ```
   - [PackerBaseAMI](https://github.com/RobBiddle/PackerBaseAMI) PowerShell Module
-    - ```PowerShell
+      ```PowerShell
       Install-Module PackerBaseAMI
       ```
 
