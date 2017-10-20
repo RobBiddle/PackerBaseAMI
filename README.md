@@ -34,11 +34,10 @@ Upon importing the module, a single PowerShell cmdlet named **New-PackerBaseAMI*
 
 - ##### Install Packer
   You have two options:
-
-  1. Install [Packer](https://packer.io) from the main site: [https://packer.io](https://packer.io)
-  2. Or use Chocolatey to install Packer:
-    1. Install Chocolatey: [https://chocolatey.org/install](https://chocolatey.org/install)
-    2. Install Packer package via Chocolatey: 
+   1. Install [Packer](https://packer.io) from the main site: [https://packer.io](https://packer.io)
+   2. Or use Chocolatey to install Packer:
+     * Install Chocolatey: [https://chocolatey.org/install](https://chocolatey.org/install)
+     * Install Packer package via Chocolatey: 
         ```PowerShell
         choco install packer
         ```
