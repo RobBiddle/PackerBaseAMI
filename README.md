@@ -29,16 +29,16 @@ Upon importing the module, a single PowerShell cmdlet named **New-PackerBaseAMI*
 
 #### Install
 - ##### Install PowerShell
-  - I suggest using the latest verison of [PowerShell](https://aka.ms/wmf5latest) if possible so that you can use PowerShellGet cmdlets
+  I suggest using the latest verison of [PowerShell](https://aka.ms/wmf5latest) if possible so that you can use PowerShellGet cmdlets
   Download the latest PowerShell here: https://aka.ms/wmf5latest
 
 - ##### Install Packer
-You have two options:
+  You have two options:
 
   1. Install [Packer](https://packer.io) from the main site: [https://packer.io](https://packer.io)
   2. Or use Chocolatey to install Packer:
-     - Install Chocolatey: [https://chocolatey.org/install](https://chocolatey.org/install)
-     - Install Packer package via Chocolatey: 
+         - Install Chocolatey: [https://chocolatey.org/install](https://chocolatey.org/install)
+         - Install Packer package via Chocolatey: 
        ```PowerShell
        choco install packer
        ```
