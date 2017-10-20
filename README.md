@@ -56,12 +56,12 @@ You have two options:
       ```
 
 - ##### Import the PackerBaseAMI module
-  - ```PowerShell
+    ```PowerShell
     Import-Module PackerBaseAMI
     ```
 
 #### Example:
-- ```PowerShell
+    ```PowerShell
     New-PackerBaseAMI -AccountNumber 111111111111 -Alias ExampleAlias -BaseOS WINDOWS_2012R2_BASE -IamRole ExampleRoleName -Region us-east-1 -OutputDirectoryPath c:\example\directory
     ```
 
