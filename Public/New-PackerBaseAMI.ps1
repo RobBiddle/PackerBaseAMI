@@ -79,7 +79,9 @@ function New-PackerBaseAMI {
         [Parameter(Mandatory = $false,
             ValueFromPipelineByPropertyName = $false)]    
         [ValidateScript( {
-                if (!(Test-Path $_)) {
+                if ((Test-Path $_)) {
+                    Write-Output "Outputing log files to: $_"
+                }else {
                     Throw "$_ is not a valid directory"
                 }
             })]
@@ -150,7 +152,7 @@ function New-PackerBaseAMI {
             instance_type         = "t2.medium"
             source_ami            = $AmiToPack.ImageId
             ami_name              = $NewAMIName
-            user_data_file        = "$((Get-Item .\Private\UserData.xml).FullName)"
+            user_data_file        = "$(Split-Path (Get-Module PackerBaseAMI).Path -Parent)\Private\UserData.xml"
         }
         $PackerTemplate = [PSCustomObject]@{
             builders = @($builders)
