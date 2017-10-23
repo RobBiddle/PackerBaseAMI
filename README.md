@@ -59,10 +59,11 @@ Upon importing the module, a single PowerShell cmdlet named **New-PackerBaseAMI*
     Import-Module PackerBaseAMI
     ```
 
-#### Example:
-    ```PowerShell
-    New-PackerBaseAMI -AccountNumber 111111111111 -Alias ExampleAlias -BaseOS WINDOWS_2012R2_BASE -IamRole ExampleRoleName -Region us-east-1 -OutputDirectoryPath c:\example\directory
-    ```
+#### Example
+
+```PowerShell
+New-PackerBaseAMI -AccountNumber 111111111111 -Alias ExampleAlias -BaseOS WINDOWS_2012R2_BASE -IamRole ExampleRoleName -Region us-east-1 -OutputDirectoryPath c:\example\directory
+```
 
 #### Maintainer(s)
 [Robert D. Biddle](https://github.com/RobBiddle) - https://github.com/RobBiddle
