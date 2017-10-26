@@ -20,12 +20,12 @@ There are a few problems associated with utilizing the Amazon provided Base Wind
 Upon importing the module, a single PowerShell cmdlet named **New-PackerBaseAMI** is exported which makes use of [AWSPowerShell](https://www.powershellgallery.com/packages/AWSPowerShell)
 
 #### Table of Contents
-- [Install](/#Install)
-- [Example](/#Example)
-- [Maintainer\(s\)](/#Maintainer)
-- [Contributing](/#Contributing)
-- [Credits](Credits)
-- [License](License)
+- [Install](#Install)
+- [Example](#Example)
+- [Maintainer\(s\)](#Maintainer)
+- [Contributing](#Contributing)
+- [Credits](#Credits)
+- [License](#License)
 
 #### Install <a name="Install"></a>
 - ##### Install PowerShell
