@@ -26,6 +26,7 @@ Upon importing the module, a single PowerShell cmdlet named **New-PackerBaseAMI*
 - [Contributing](#Contributing)
 - [Credits](#Credits)
 - [License](#License)
+- [Support](#Support)
 
 #### Install <a name="Install"></a>
 - ##### Install PowerShell
@@ -84,3 +85,10 @@ New-PackerBaseAMI -AccountNumber 111111111111 -Alias ExampleAlias -BaseOS WINDOW
 #### License <a name="License"></a>
 GNU General Public License v3.0
 https://github.com/RobBiddle/PackerBaseAMI/LICENSE.txt
+
+##### Support <a name="Support"></a>
+- Please Star this repo if you found some of this code useful!
+- If you're an unbelievably nice person and want to show your appreciation, I like beer ;-)
+  - Send me beer money via LTC: MHJj5jaWFU2VeqEZXnLC4xaZdQ1Nu9NC48
+  - Send me beer money via BTC: 38ieXk9rn2LJEsfimFWiyycUZZv5ABJPqM
+  - Send me beer money via USD: https://paypal.me/RobertBiddle
