@@ -87,7 +87,7 @@ GNU General Public License v3.0
 https://github.com/RobBiddle/PackerBaseAMI/LICENSE.txt
 
 ##### Support <a name="Support"></a>
-- Please Star this repo if you found some of this code useful!
+- Please :star:Star this repo if you found some of this code useful!
 - If you're an unbelievably nice person and want to show your appreciation, I like beer ;-)
   - Send me :beer: money via LTC: MHJj5jaWFU2VeqEZXnLC4xaZdQ1Nu9NC48
   - Send me :beer: money via BTC: 38ieXk9rn2LJEsfimFWiyycUZZv5ABJPqM
