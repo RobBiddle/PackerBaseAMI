@@ -22,12 +22,12 @@ Upon importing the module, a single PowerShell cmdlet named **New-PackerBaseAMI*
 #### Table of Contents
 - [Install](/#Install)
 - [Example](/#Example)
-- [Maintainer\(s\)](/#Maintainer\(s\))
+- [Maintainer\(s\)](/#Maintainer)
 - [Contributing](/#Contributing)
 - [Credits](Credits)
 - [License](License)
 
-#### Install
+#### Install <a name="Install"></a>
 - ##### Install PowerShell
   I suggest using the latest verison of [PowerShell](https://aka.ms/wmf5latest) if possible so that you can use PowerShellGet cmdlets
   Download the latest PowerShell here: https://aka.ms/wmf5latest
@@ -59,16 +59,16 @@ Upon importing the module, a single PowerShell cmdlet named **New-PackerBaseAMI*
     Import-Module PackerBaseAMI
     ```
 
-#### Example
+#### Example <a name="Example"></a>
 
 ```PowerShell
 New-PackerBaseAMI -AccountNumber 111111111111 -Alias ExampleAlias -BaseOS WINDOWS_2012R2_BASE -IamRole ExampleRoleName -Region us-east-1 -OutputDirectoryPath c:\example\directory
 ```
 
-#### Maintainer(s)
+#### Maintainer(s) <a name="Maintainer"></a>
 [Robert D. Biddle](https://github.com/RobBiddle) - https://github.com/RobBiddle
 
-#### Contributing
+#### Contributing <a name="Contributing"></a>
 
 1. Fork it!
 2. Create your feature branch: `git checkout -b my-new-feature`
@@ -76,11 +76,11 @@ New-PackerBaseAMI -AccountNumber 111111111111 -Alias ExampleAlias -BaseOS WINDOW
 4. Push to the branch: `git push origin my-new-feature`
 5. Submit a pull request :D
 
-#### Credits
+#### Credits <a name="Credits"></a>
 - [Upic Solutions](https://upicsolutions.org/) for sponsoring my time to develop this project.  This code is being used as part of our mission to help [United Ways](https://www.unitedway.org/) be the best community solution leaders, in an increasingly competitive environment, by providing state of the art business and technology solutions
 - [Hashicorp](https://www.hashicorp.com/) for creating [Packer](https://packer.io) and other fantastic open source projects
 - The [AWSPowerShell](https://www.powershellgallery.com/packages/AWSPowerShell) Devs for supporting all of us PowerShell users
 
-#### License
+#### License <a name="License"></a>
 GNU General Public License v3.0
 https://github.com/RobBiddle/PackerBaseAMI/LICENSE.txt
