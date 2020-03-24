@@ -1,0 +1,11 @@
+<powershell> # XML Tag for EC2ConfigService
+
+# Run Sysprep via EC2Launch scripts
+# https://docs.aws.amazon.com/AWSEC2/latest/WindowsGuide/ec2launch.html#ec2launch-sysprep
+
+Set-Location "$env:ProgramData\Amazon\EC2-Windows\Launch\Scripts"
+$command = '.\InitializeInstance.ps1 -Schedule'
+Invoke-Expression -Command $command
+$command = '.\SysprepInstance.ps1'
+Invoke-Expression -Command $command
+</powershell>

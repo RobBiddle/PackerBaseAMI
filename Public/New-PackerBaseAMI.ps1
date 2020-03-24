@@ -146,6 +146,11 @@ function New-PackerBaseAMI {
         }
 
         # Build the Packer Template
+        if ($BaseOS -match '2016|2019') {
+            $UserDataFile = "$(Split-Path (Get-Module PackerBaseAMI).Path -Parent)\Private\UserDataEC2Launch.xml"
+        } else {
+            $UserDataFile = "$(Split-Path (Get-Module PackerBaseAMI).Path -Parent)\Private\UserData.xml"
+        }
         $builders = [PSCustomObject]@{
             type                  = "amazon-ebs"
             communicator          = "none"
@@ -157,7 +162,7 @@ function New-PackerBaseAMI {
             instance_type         = "t2.medium"
             source_ami            = $AmiToPack.ImageId
             ami_name              = $NewAMIName
-            user_data_file        = "$(Split-Path (Get-Module PackerBaseAMI).Path -Parent)\Private\UserData.xml"
+            user_data_file        = $UserDataFile
         }
         $PackerTemplate = [PSCustomObject]@{
             builders = @($builders)
