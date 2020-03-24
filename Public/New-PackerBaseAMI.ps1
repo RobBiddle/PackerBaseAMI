@@ -53,7 +53,7 @@ function New-PackerBaseAMI {
         # Filter Names taken from here: https://docs.aws.amazon.com/powershell/latest/reference/items/Get-EC2ImageByName.html
         [Parameter(Mandatory = $true, 
             ValueFromPipelineByPropertyName = $false)]
-        [ValidateSet('WINDOWS_2008R2_BASE', 'WINDOWS_2012_BASE', 'WINDOWS_2012R2_BASE', 'WINDOWS_2016_BASE')]
+        [ValidateSet('WINDOWS_2008R2_BASE', 'WINDOWS_2012_BASE', 'WINDOWS_2012R2_BASE', 'WINDOWS_2016_BASE', 'Windows_Server-2019-English-Full-Base')]
         [String]
         $BaseOS = 'WINDOWS_2012R2_BASE',
 
@@ -128,7 +128,12 @@ function New-PackerBaseAMI {
         }
 
         # Query AWS for necessary data
-        $AmiToPack = Get-EC2ImageByName @AwsCredentialParams -Region $Region -Name $BaseOS -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+        if ($BaseOS -eq 'Windows_Server-2019-English-Full-Base') {
+            $AmiToPack = Get-Ec2Image @AwsCredentialParams -Region $Region (Get-SSMLatestEC2Image @AwsCredentialParams -Region $Region -Path ami-windows-latest -ImageName $BaseOS)
+        } else {
+            $AmiToPack = Get-EC2ImageByName @AwsCredentialParams -Region $Region -Name $BaseOS -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+        }
+        
         $NewAMIName = "$($AccountNumber)_$($AmiToPack.Name)"
         $vpcId = (Get-EC2Vpc @AwsCredentialParams -Region $Region | Select-Object -First 1).VpcId
         $subnetId = (Get-EC2Subnet @AwsCredentialParams  -Region $Region | Where-Object VpcId -eq $vpcId | Select-Object -First 1).SubnetId
