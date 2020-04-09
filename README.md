@@ -63,7 +63,7 @@ Upon importing the module, a single PowerShell cmdlet named **New-PackerBaseAMI*
 #### Example <a name="Example"></a>
 
 ```PowerShell
-New-PackerBaseAMI -AccountNumber 111111111111 -Alias ExampleAlias -BaseOS WINDOWS_2012R2_BASE -IamRole ExampleRoleName -Region us-east-1 -OutputDirectoryPath c:\example\directory
+New-PackerBaseAMI -AccountNumber '111111111111' -Alias ExampleAlias -BaseOS 'Windows_Server-2019-English-Full-Base' -IamRole 'ExampleRoleName' -Region 'us-east-1' -OutputDirectoryPath 'c:\example\directory'
 ```
 
 #### Maintainer(s) <a name="Maintainer"></a>

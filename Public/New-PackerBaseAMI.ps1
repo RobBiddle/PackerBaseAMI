@@ -4,7 +4,7 @@
 .DESCRIPTION
     Create a Windows Base AMI using Packer, Encrypted by default
 .EXAMPLE
-   New-PackerBaseAMI -AccountNumber 111111111111 -Alias ExampleAlias -BaseOS WINDOWS_2012R2_BASE -IamRole ExampleRoleName -Region us-east-1 -OutputDirectoryPath c:\example\directory
+   New-PackerBaseAMI -AccountNumber '111111111111' -Alias 'ExampleAlias' -BaseOS 'Windows_Server-2019-English-Full-Base' -IamRole 'ExampleRoleName' -Region 'us-east-1' -OutputDirectoryPath 'c:\example\directory'
 .NOTES
     Author: Robert D. Biddle
     https://github.com/RobBiddle
@@ -50,12 +50,10 @@ function New-PackerBaseAMI {
         $Alias = $AccountNumber,
 
         # Base Operating System
-        # Filter Names taken from here: https://docs.aws.amazon.com/powershell/latest/reference/items/Get-EC2ImageByName.html
         [Parameter(Mandatory = $true, 
             ValueFromPipelineByPropertyName = $false)]
-        [ValidateSet('WINDOWS_2008R2_BASE', 'WINDOWS_2012_BASE', 'WINDOWS_2012R2_BASE', 'WINDOWS_2016_BASE', 'Windows_Server-2019-English-Full-Base')]
         [String]
-        $BaseOS = 'WINDOWS_2012R2_BASE',
+        $BaseOS = 'Windows_Server-2019-English-Full-Base',
 
         # Do Not Encrypt the new AMI
         [Parameter(Mandatory = $false, 
@@ -113,31 +111,49 @@ function New-PackerBaseAMI {
             }
         }
         $AwsTemporaryCredentials = Get-AwsTemporaryCredential @GetTemporaryCredentials_Params
-
         # Store Temporary AWS Credentials in environment variables for Packer to access
         $Env:AWS_ACCESS_KEY_ID = $AwsTemporaryCredentials.Credentials.AccessKeyId
         $Env:AWS_SECRET_ACCESS_KEY = $AwsTemporaryCredentials.Credentials.SecretAccessKey
         $Env:AWS_SESSION_TOKEN = $AwsTemporaryCredentials.Credentials.SessionToken
         $Env:AWS_DEFAULT_REGION = $Region
-
         # Hashtable of credentials for parameter splatting
         $AwsCredentialParams = @{
             AccessKey    = $AwsTemporaryCredentials.Credentials.AccessKeyId
             SecretKey    = $AwsTemporaryCredentials.Credentials.SecretAccessKey
             SessionToken = $AwsTemporaryCredentials.Credentials.SessionToken
         }
-
-        # Query AWS for necessary data
-        if ($BaseOS -eq 'Windows_Server-2019-English-Full-Base') {
-            $AmiToPack = Get-Ec2Image @AwsCredentialParams -Region $Region (Get-SSMLatestEC2Image @AwsCredentialParams -Region $Region -Path ami-windows-latest -ImageName $BaseOS)
+        # Validate BaseOS Parameter input
+        if (Get-Command Get-EC2ImageByName -ErrorAction SilentlyContinue) {
+            $OldImageNameValues = @(Get-EC2ImageByName @AwsCredentialParams -Region $Region)
         } else {
-            $AmiToPack = Get-EC2ImageByName @AwsCredentialParams -Region $Region -Name $BaseOS -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+            $OldImageNameValues = @()
         }
         
+        $NewImageNameValues = @((Get-SSMLatestEC2Image @AwsCredentialParams -Region $Region -Path ami-windows-latest | Sort-Object Name).Name)
+        $ValidBaseOSStrings = $OldImageNameValues
+        $ValidBaseOSStrings += $NewImageNameValues 
+        $ValidBaseOSStrings = $ValidBaseOSStrings -imatch 'Windows' | Sort-Object
+        if ($BaseOS -notin $ValidBaseOSStrings) {
+            Write-Warning "Valid Values for BaseOS are: `n$($ValidBaseOSStrings | Foreach-Object {"`n$_"})"
+            Break
+        }
+
+        # Query for AMI
+        if ($BaseOS -in $OldImageNameValues) {
+            # Support for old images
+            $AmiToPack = Get-EC2ImageByName @AwsCredentialParams -Region $Region -Name $BaseOS -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+        } elseif ($BaseOS -in $NewImageNameValues) {
+            $AmiToPack = Get-Ec2Image @AwsCredentialParams -Region $Region (Get-SSMLatestEC2Image @AwsCredentialParams -Region $Region -Path ami-windows-latest -ImageName $BaseOS)
+        }
+
+        if (-NOT $AmiToPack) {
+            Write-Error "No Matching AMI Found"
+            Break
+        }
+
         $NewAMIName = "$($AccountNumber)_$($AmiToPack.Name)"
         $vpcId = (Get-EC2Vpc @AwsCredentialParams -Region $Region | Select-Object -First 1).VpcId
         $subnetId = (Get-EC2Subnet @AwsCredentialParams  -Region $Region | Where-Object VpcId -eq $vpcId | Select-Object -First 1).SubnetId
-
         if ($DoNotEncrypt) {
             $encrypt_boot = "false"
         }
@@ -179,8 +195,7 @@ function New-PackerBaseAMI {
             -ArgumentList $PackerArgs `
             -RedirectStandardOutput "$OutputDirectoryPath\$NewAMIName-$RunDateTime-Log.txt" `
             -RedirectStandardError "$OutputDirectoryPath\$NewAMIName-$RunDateTime-Errors.txt" `
-            -PassThru -WindowStyle Hidden
-        
+            -PassThru -WindowStyle Hidden;
         Write-Output "Packer Process ID: $($PackerProcess.Id)"
         Write-Output "Logfiles will be prefixed with $NewAMIName-$RunDateTime and located in $((Get-Item $OutputDirectoryPath).FullName)"
         Write-Output "This process will take roughly 20 minutes to compete.  10 minutes if you chose not to encrypt."
