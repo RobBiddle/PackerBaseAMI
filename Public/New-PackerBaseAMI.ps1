@@ -53,7 +53,7 @@ function New-PackerBaseAMI {
         [Parameter(Mandatory = $true, 
             ValueFromPipelineByPropertyName = $false)]
         [String]
-        $BaseOS = 'Windows_Server-2019-English-Full-Base',
+        $BaseOS = 'Windows_Server-2022-English-Full-Base',
 
         # Do Not Encrypt the new AMI
         [Parameter(Mandatory = $false, 
@@ -161,12 +161,19 @@ function New-PackerBaseAMI {
             $encrypt_boot = "true"
         }
 
-        # Build the Packer Template
-        if ($BaseOS -match '2016|2019') {
+        # Build UserData for the Packer Template
+        if ($BaseOS -match '2012') {
+            # UserData for EC2Config
+            $UserDataFile = "$(Split-Path (Get-Module PackerBaseAMI).Path -Parent)\Private\UserDataEC2Config.xml"
+        } elseif ($BaseOS -match '2016|2019') {
+            # UserData for EC2Launch
             $UserDataFile = "$(Split-Path (Get-Module PackerBaseAMI).Path -Parent)\Private\UserDataEC2Launch.xml"
         } else {
-            $UserDataFile = "$(Split-Path (Get-Module PackerBaseAMI).Path -Parent)\Private\UserData.xml"
+            # UserData for EC2Launch V2
+            $UserDataFile = "$(Split-Path (Get-Module PackerBaseAMI).Path -Parent)\Private\UserDataEC2LaunchV2.xml"
         }
+
+        # Build the Packer Template
         $builders = [PSCustomObject]@{
             type                  = "amazon-ebs"
             communicator          = "none"
