@@ -7,26 +7,30 @@
 
 There are a few problems associated with utilizing the Amazon provided Base Windows AMI images:
 
-1. The Amazon provided Base Windows AMI images are frequently depricated and deregistered.
+1. The Amazon provided Base Windows AMI images are frequently deprecated and deregistered.
    - This causes problems if you are using those AMIs in CloudFormation stacks, as you may not be able to update the stack after the AMI is deregistered.  This problem is resolved by creating an new AMI based on the Amazon provided image.
    - The AMI produced by this module will remain in your account until you choose to remove it.
 
 2. The Amazon provided Base Windows AMI images cannot be directly copied via the AWS API (cli / Powershell)
    - The Amazon recommended process is a manual one utilizing the web console via a browser, which is highly inefficient and not well suited to automation
 
-3. The Amazon provided Base Windows AMI images are not encrypted. They can't be encrypted as they are based on snapshots owned by Amazon, which means that Amazon would have to share their private encryption keys in order for customer to use their encrypted images, which would render the encryption usless.
+3. The Amazon provided Base Windows AMI images are not encrypted. They can't be encrypted as they are based on snapshots owned by Amazon, which means that Amazon would have to share their private encryption keys in order for customer to use their encrypted images, which would render the encryption useless.
    - The AMI produced by this module will encrypt the snapshot for the new AMI by default, using the master key associated with your AWS account.
 
 Upon importing the module, a single PowerShell cmdlet named **New-PackerBaseAMI** is exported which makes use of [AWSPowerShell](https://www.powershellgallery.com/packages/AWSPowerShell)
 
 #### Table of Contents
-- [Install](#Install)
-- [Example](#Example)
-- [Maintainer\(s\)](#Maintainer)
-- [Contributing](#Contributing)
-- [Credits](#Credits)
-- [License](#License)
-- [Support](#Support)
+- [PackerBaseAMI](#packerbaseami)
+      - [Synopsis](#synopsis)
+      - [Description](#description)
+      - [Table of Contents](#table-of-contents)
+      - [Install ](#install-)
+      - [Example ](#example-)
+      - [Maintainer(s) ](#maintainers-)
+      - [Contributing ](#contributing-)
+      - [Credits ](#credits-)
+      - [License ](#license-)
+        - [Support ](#support-)
 
 #### Install <a name="Install"></a>
 - ##### Install PowerShell
@@ -38,7 +42,7 @@ Upon importing the module, a single PowerShell cmdlet named **New-PackerBaseAMI*
    1. Install [Packer](https://packer.io) from the main site: [https://packer.io](https://packer.io)
    2. Or use Chocolatey to install Packer:
      * Install Chocolatey: [https://chocolatey.org/install](https://chocolatey.org/install)
-     * Install Packer package via Chocolatey: 
+     * Install Packer package via Chocolatey:
         ```PowerShell
         choco install packer
         ```
@@ -48,7 +52,10 @@ Upon importing the module, a single PowerShell cmdlet named **New-PackerBaseAMI*
 
   - [AWSPowerShell](https://www.powershellgallery.com/packages/AWSPowerShell) PowerShell Module
       ```PowerShell
+      # If you want the old monolithic module:
       Install-Module AWSPowerShell
+      # Otherwise, if you want the new modularized modules with only the necessary cmdlets (recommended):
+      Install-Module AWS.Tools.Common,AWS.Tools.EC2
       ```
   - [PackerBaseAMI](https://github.com/RobBiddle/PackerBaseAMI) PowerShell Module
       ```PowerShell
