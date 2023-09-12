@@ -2,3 +2,4 @@
   "%programfiles%\amazon\ec2launch\ec2launch.exe" sysprep --shutdown=true
 </script>
 <persist>false</persist>
+<detach>true</detach>
