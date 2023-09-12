@@ -90,7 +90,12 @@ function New-PackerBaseAMI {
         [Parameter(Mandatory = $false,
             ValueFromPipelineByPropertyName = $false)]
         [String]
-        $AwsProfileName = $AwsProfileName
+        $AwsProfileName = $AwsProfileName,
+
+        [Parameter(Mandatory = $false,
+            ValueFromPipelineByPropertyName = $false)]
+            [switch]
+            $debugMode
     )
 
     Begin {
@@ -197,12 +202,20 @@ function New-PackerBaseAMI {
 
         # Run Packer
         Write-Output "Starting Packer Process using Template: $PackerTemplateJsonFilePath"
-        $PackerArgs = "build $PackerTemplateJsonFilePath"
-        $PackerProcess = Start-Process -FilePath (Get-PackerExecutable).FullName `
+        if ($debugMode) {
+            Write-Output "Debug Mode Enabled"
+            $PackerArgs = "build -debug $PackerTemplateJsonFilePath"
+            $PackerProcess = Start-Process -FilePath (Get-PackerExecutable).FullName `
+            -ArgumentList $PackerArgs;
+        } else {
+            $PackerArgs = "build $PackerTemplateJsonFilePath"
+            $PackerProcess = Start-Process -FilePath (Get-PackerExecutable).FullName `
             -ArgumentList $PackerArgs `
             -RedirectStandardOutput "$OutputDirectoryPath\$NewAMIName-$RunDateTime-Log.txt" `
             -RedirectStandardError "$OutputDirectoryPath\$NewAMIName-$RunDateTime-Errors.txt" `
             -PassThru -WindowStyle Hidden;
+        }
+        
         Write-Output "Packer Process ID: $($PackerProcess.Id)"
         Write-Output "Logfiles will be prefixed with $NewAMIName-$RunDateTime and located in $((Get-Item $OutputDirectoryPath).FullName)"
         Write-Output "This process will take roughly 20 minutes to compete.  10 minutes if you chose not to encrypt."
