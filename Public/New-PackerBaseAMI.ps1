@@ -200,16 +200,26 @@ function New-PackerBaseAMI {
         $PackerTemplate | ConvertTo-Json -Depth 10 | Out-File $OutputDirectoryPath\temptemplate.json -Encoding default -Force
         $PackerTemplateJsonFilePath = (Get-Item $OutputDirectoryPath\temptemplate.json).FullName
 
+        # Find Packer Executable
+        $PackerExecutable = (Get-PackerExecutable).FullName
+        # Load amazon-ebs plugin
+        $PackerArgs = "plugins install `"github.com/hashicorp/amazon`""
+            $PackerProcess = Start-Process -FilePath $PackerExecutable `
+            -ArgumentList $PackerArgs `
+            -RedirectStandardOutput "$OutputDirectoryPath\PluginInstall-$RunDateTime-Log.txt" `
+            -RedirectStandardError "$OutputDirectoryPath\PluginInstall-$RunDateTime-Errors.txt" `
+            -PassThru -WindowStyle Hidden;
+
         # Run Packer
         Write-Output "Starting Packer Process using Template: $PackerTemplateJsonFilePath"
         if ($debugMode) {
             Write-Output "Debug Mode Enabled"
             $PackerArgs = "build -debug $PackerTemplateJsonFilePath"
-            $PackerProcess = Start-Process -FilePath (Get-PackerExecutable).FullName `
+            $PackerProcess = Start-Process -FilePath $PackerExecutable `
             -ArgumentList $PackerArgs;
         } else {
             $PackerArgs = "build $PackerTemplateJsonFilePath"
-            $PackerProcess = Start-Process -FilePath (Get-PackerExecutable).FullName `
+            $PackerProcess = Start-Process -FilePath $PackerExecutable `
             -ArgumentList $PackerArgs `
             -RedirectStandardOutput "$OutputDirectoryPath\$NewAMIName-$RunDateTime-Log.txt" `
             -RedirectStandardError "$OutputDirectoryPath\$NewAMIName-$RunDateTime-Errors.txt" `
