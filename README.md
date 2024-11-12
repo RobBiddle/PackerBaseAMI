@@ -1,8 +1,11 @@
 # PackerBaseAMI
-#### Synopsis
+
+## Synopsis
+>
 >[PackerBaseAMI](https://github.com/RobBiddle/PackerBaseAMI) is a PowerShell module which automates the process of creating a Windows Base AMI for use with AWS EC2.
 
-#### Description
+## Description
+
 [PackerBaseAMI](https://github.com/RobBiddle/PackerBaseAMI) is a PowerShell module which automates the process of creating a Windows Base AMI for use with AWS EC2.
 
 There are a few problems associated with utilizing the Amazon provided Base Windows AMI images:
@@ -19,83 +22,97 @@ There are a few problems associated with utilizing the Amazon provided Base Wind
 
 Upon importing the module, a single PowerShell cmdlet named **New-PackerBaseAMI** is exported which makes use of [AWSPowerShell](https://www.powershellgallery.com/packages/AWSPowerShell)
 
-#### Table of Contents
+## Table of Contents
+
 - [PackerBaseAMI](#packerbaseami)
       - [Synopsis](#synopsis)
       - [Description](#description)
       - [Table of Contents](#table-of-contents)
-      - [Install ](#install-)
-      - [Example ](#example-)
-      - [Maintainer(s) ](#maintainers-)
-      - [Contributing ](#contributing-)
-      - [Credits ](#credits-)
-      - [License ](#license-)
-        - [Support ](#support-)
+      - [Install](#install-)
+      - [Example](#example-)
+      - [Maintainer(s)](#maintainers-)
+      - [Contributing](#contributing-)
+      - [Credits](#credits-)
+      - [License](#license-)
+        - [Support](#support-)
 
-#### Install <a name="Install"></a>
-- ##### Install PowerShell
+## Install
+
+- ### Install PowerShell
+
   I suggest using the latest verison of [PowerShell](https://aka.ms/wmf5latest) if possible so that you can use PowerShellGet cmdlets
-  Download the latest PowerShell here: https://aka.ms/wmf5latest
+  Download the latest PowerShell here: <https://aka.ms/wmf5latest>
 
-- ##### Install Packer
+- ### Install Packer
+
   You have two options:
    1. Install [Packer](https://packer.io) from the main site: [https://packer.io](https://packer.io)
    2. Or use Chocolatey to install Packer:
-     * Install Chocolatey: [https://chocolatey.org/install](https://chocolatey.org/install)
-     * Install Packer package via Chocolatey:
+  - Install Chocolatey: [https://chocolatey.org/install](https://chocolatey.org/install)
+  - Install Packer package via Chocolatey:
+
         ```PowerShell
         choco install packer
         ```
 
-- ##### Install [PackerBaseAMI](https://github.com/RobBiddle/PackerBaseAMI) & Requirements:
+- ### Install [PackerBaseAMI](https://github.com/RobBiddle/PackerBaseAMI) & Requirements
+
   (Assumes you have PowerShellGet and access to PowerShellGallery.com)
 
   - [AWSPowerShell](https://www.powershellgallery.com/packages/AWSPowerShell) PowerShell Module
+
       ```PowerShell
       # If you want the old monolithic module:
-      Install-Module AWSPowerShell
+      # Install-Module AWSPowerShell
       # Otherwise, if you want the new modularized modules with only the necessary cmdlets (recommended):
-      Install-Module AWS.Tools.Common,AWS.Tools.EC2
+      Install-Module AWS.Tools.Common,AWS.Tools.EC2,AWS.Tools.SecurityToken,AWS.Tools.SimpleSystemsManagement
       ```
+
   - [PackerBaseAMI](https://github.com/RobBiddle/PackerBaseAMI) PowerShell Module
-      ```PowerShell
-      Install-Module PackerBaseAMI
-      ```
 
-- ##### Import the PackerBaseAMI module
-    ```PowerShell
-    Import-Module PackerBaseAMI
-    ```
+```PowerShell
+Install-Module PackerBaseAMI
+```
 
-#### Example <a name="Example"></a>
+- ### Import the PackerBaseAMI module
+
+```PowerShell
+Import-Module PackerBaseAMI
+```
+
+## Example
 
 ```PowerShell
 New-PackerBaseAMI -AccountNumber '111111111111' -Alias ExampleAlias -BaseOS 'Windows_Server-2019-English-Full-Base' -IamRole 'ExampleRoleName' -Region 'us-east-1' -OutputDirectoryPath 'c:\example\directory'
 ```
 
-#### Maintainer(s) <a name="Maintainer"></a>
-[Robert D. Biddle](https://github.com/RobBiddle) - https://github.com/RobBiddle
+## Maintainer(s)
 
-#### Contributing <a name="Contributing"></a>
+[Robert D. Biddle](https://github.com/RobBiddle) - <https://github.com/RobBiddle>
+
+## Contributing
 
 1. Fork it!
 2. Create your feature branch: `git checkout -b my-new-feature`
 3. Commit your changes: `git commit -am 'Add some feature'`
 4. Push to the branch: `git push origin my-new-feature`
-5. Submit a pull request :D
+5. Create Issues / Submit a pull request
 
-#### Credits <a name="Credits"></a>
+## Credits
+
 - [Upic Solutions](https://upicsolutions.org/) for sponsoring my time to develop this project.  This code is being used as part of our mission to help [United Ways](https://www.unitedway.org/) be the best community solution leaders, in an increasingly competitive environment, by providing state of the art business and technology solutions
 - [Hashicorp](https://www.hashicorp.com/) for creating [Packer](https://packer.io) and other fantastic open source projects
 - The [AWSPowerShell](https://www.powershellgallery.com/packages/AWSPowerShell) Devs for supporting all of us PowerShell users
 
-#### License <a name="License"></a>
-GNU General Public License v3.0
-https://github.com/RobBiddle/PackerBaseAMI/LICENSE.txt
+## License
 
-##### Support <a name="Support"></a>
+GNU General Public License v3.0
+<https://github.com/RobBiddle/PackerBaseAMI/LICENSE.txt>
+
+## Support
+
 - Please :star:Star this repo if you found some of this code useful!
 - If you're an unbelievably nice person and want to show your appreciation, I like beer ;-)
   - Send me :beer: money via LTC: MHJj5jaWFU2VeqEZXnLC4xaZdQ1Nu9NC48
   - Send me :beer: money via BTC: 38ieXk9rn2LJEsfimFWiyycUZZv5ABJPqM
-  - Send me :beer: money via USD: https://paypal.me/RobertBiddle
+  - Send me :beer: money via USD: <https://paypal.me/RobertBiddle>

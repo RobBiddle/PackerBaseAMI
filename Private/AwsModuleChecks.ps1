@@ -24,20 +24,30 @@
     Public License instead of this License.  But first, please read
     <http://www.gnu.org/philosophy/why-not-lgpl.html>.
 #>
-function Confirm-PackerIsInstalled {
+function Confirm-AwsModulesAreInstalled {
+    $legacyAwsModule = 'AWSPowerShell'
+    $requiredAwsModules = 'AWS.Tools.Common', 'AWS.Tools.EC2', 'AWS.Tools.SecurityToken', 'AWS.Tools.SimpleSystemsManagement'
     $StartingErrorActionPreference = $ErrorActionPreference
     $ErrorActionPreference = "silentlycontinue"
-    try {
-        $PackerFound = (Start-Process -FilePath 'cmd.exe' -ArgumentList '/c where packer.exe' -PassThru -WindowStyle Hidden -Wait).ExitCode
-    }
-    catch {}
+    $AwsModulesFound = $true
+    $legacyAwsModuleFound = $false
 
-    if ($PackerFound -eq 1) {
-        Throw "Packer.exe was not found!  Either Packer is not installed, or it is not in PATH"
+    # Check for the legacy AWSPowerShell module
+    if (Get-Module -ListAvailable -Name $legacyAwsModule) {
+        $legacyAwsModuleFound = $true
+        Write-Warning "The legacy AWSPowerShell module is installed.  It is recommended to use the AWS.Tools modules instead."
     }
+
+    # Check for the required AWS.Tools modules
+    if (-not $legacyAwsModuleFound) {
+        foreach ($module in $requiredAwsModules) {
+            if (-not (Get-Module -ListAvailable -Name $module)) {
+                $AwsModulesFound = $false
+                Throw "Module $module not found. Please install the required AWS.Tools modules from the PowerShell Gallery"
+            }
+        }
+    }
+
     $ErrorActionPreference = $StartingErrorActionPreference
-    Return $True
-}
-function Get-PackerExecutable {
-    Get-Item (cmd.exe /c 'where packer')
+    Return $AwsModulesFound
 }

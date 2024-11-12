@@ -99,7 +99,8 @@ function New-PackerBaseAMI {
     )
 
     Begin {
-        Confirm-PackerIsInstalled | Out-Null
+        $null = Confirm-PackerIsInstalled
+        $null = Confirm-AwsModulesAreInstalled
         $RunDateTime = Get-ShortDate -FilenameCompatibleFormat
     }
     Process {
@@ -128,7 +129,7 @@ function New-PackerBaseAMI {
             SessionToken = $AwsTemporaryCredentials.Credentials.SessionToken
         }
         # Validate BaseOS Parameter input
-        if (Get-Command Get-EC2ImageByName -ErrorAction SilentlyContinue) {
+        if (Get-Command Get-EC2ImageByName -ErrorAction SilentlyContinue | Out-Null) {
             $OldImageNameValues = @(Get-EC2ImageByName @AwsCredentialParams -Region $Region)
         } else {
             $OldImageNameValues = @()
