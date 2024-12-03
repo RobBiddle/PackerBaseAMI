@@ -105,13 +105,19 @@ function Get-AwsTemporaryCredential {
 
     # Load stored credentials
     $AwsProfile = Get-MyAwsCredentials -AwsProfileName $AwsProfileName
-    Initialize-AWSDefaults -Credential $AwsProfile
+    
+    # Check if the credentials are of type AssumeRoleAWSCredentials
+    if ($AwsProfile -is [Amazon.Runtime.AssumeRoleAWSCredentials]) {
+        Write-Verbose "AssumeRoleAWSCredentials detected, skipping Initialize-AWSDefaults"
+    } else {
+        Initialize-AWSDefaults -Credential $AwsProfile
+    }
 
     # Obtain Temporary Credentials
     $AwsTemporaryCredentials = New-Object -TypeName psobject
     $AwsTemporaryCredentials | Add-Member -MemberType NoteProperty -Name "AccountNumber" -Value $AccountNumber
     $AwsTemporaryCredentials | Add-Member -MemberType NoteProperty -Name "Region" -Value $Region
     $AwsTemporaryCredentials | Add-Member -MemberType NoteProperty -Name "RoleName" -Value $IamRole
-    $AwsTemporaryCredentials | Add-Member -MemberType NoteProperty -Name "Credentials" -Value (Use-STSRole -RoleArn "arn:aws:iam::$($AccountNumber):role/$($IamRole)" -RoleSessionName "$($Alias)" -Credential $AwsProfile ).Credentials
+    $AwsTemporaryCredentials | Add-Member -MemberType NoteProperty -Name "Credentials" -Value (Use-STSRole -RoleArn "arn:aws:iam::$($AccountNumber):role/$($IamRole)" -RoleSessionName "$($Alias)" -Credential $AwsProfile.SourceCredentials ).Credentials
     Return $AwsTemporaryCredentials
 }
