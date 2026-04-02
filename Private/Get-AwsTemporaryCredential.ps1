@@ -109,8 +109,10 @@ function Get-AwsTemporaryCredential {
     # Check if the credentials are of type AssumeRoleAWSCredentials
     if ($AwsProfile -is [Amazon.Runtime.AssumeRoleAWSCredentials]) {
         Write-Verbose "AssumeRoleAWSCredentials detected, skipping Initialize-AWSDefaults"
-    } else {
+    } elseif (Get-Command Initialize-AWSDefaults -ErrorAction SilentlyContinue) {
         Initialize-AWSDefaults -Credential $AwsProfile
+    } else {
+        Write-Verbose "Initialize-AWSDefaults not available (AWS.Tools modules do not include it), skipping"
     }
 
     # Obtain Temporary Credentials

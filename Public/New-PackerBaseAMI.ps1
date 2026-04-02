@@ -4,7 +4,7 @@
 .DESCRIPTION
     Create a Windows Base AMI using Packer, Encrypted by default
 .EXAMPLE
-   New-PackerBaseAMI -AccountNumber '111111111111' -Alias 'ExampleAlias' -BaseOS 'Windows_Server-2019-English-Full-Base' -IamRole 'ExampleRoleName' -Region 'us-east-1' -OutputDirectoryPath 'c:\example\directory'
+   New-PackerBaseAMI -AccountNumber '111111111111' -Alias 'ExampleAlias' -BaseOS 'Windows_Server-2025-English-Full-Base' -IamRole 'ExampleRoleName' -Region 'us-east-1' -InstanceType 't3.medium' -OutputDirectoryPath 'c:\example\directory'
 .NOTES
     Author: Robert D. Biddle
     https://github.com/RobBiddle
@@ -53,7 +53,7 @@ function New-PackerBaseAMI {
         [Parameter(Mandatory = $true, 
             ValueFromPipelineByPropertyName = $false)]
         [String]
-        $BaseOS = 'Windows_Server-2022-English-Full-Base',
+        $BaseOS = 'Windows_Server-2025-English-Full-Base',
 
         # Do Not Encrypt the new AMI
         [Parameter(Mandatory = $false, 
@@ -91,6 +91,12 @@ function New-PackerBaseAMI {
             ValueFromPipelineByPropertyName = $false)]
         [String]
         $AwsProfileName = $AwsProfileName,
+
+        # EC2 Instance Type to use for building the AMI
+        [Parameter(Mandatory = $false,
+            ValueFromPipelineByPropertyName = $false)]
+        [String]
+        $InstanceType = 't3.medium',
 
         [Parameter(Mandatory = $false,
             ValueFromPipelineByPropertyName = $false)]
@@ -188,7 +194,7 @@ function New-PackerBaseAMI {
             region                = $Region
             Vpc_Id                = $vpcId
             Subnet_Id             = $subnetId
-            instance_type         = "t2.medium"
+            instance_type         = $InstanceType
             source_ami            = $AmiToPack.ImageId
             ami_name              = $NewAMIName
             user_data_file        = $UserDataFile
@@ -205,11 +211,13 @@ function New-PackerBaseAMI {
         $PackerExecutable = (Get-PackerExecutable).FullName
         # Load amazon-ebs plugin
         $PackerArgs = "plugins install `"github.com/hashicorp/amazon`""
-            $PackerProcess = Start-Process -FilePath $PackerExecutable `
+        Write-Output "Installing Packer amazon plugin..."
+        $PackerPluginProcess = Start-Process -FilePath $PackerExecutable `
             -ArgumentList $PackerArgs `
             -RedirectStandardOutput "$OutputDirectoryPath\PluginInstall-$RunDateTime-Log.txt" `
             -RedirectStandardError "$OutputDirectoryPath\PluginInstall-$RunDateTime-Errors.txt" `
             -PassThru -WindowStyle Hidden;
+        $PackerPluginProcess | Wait-Process
 
         # Run Packer
         Write-Output "Starting Packer Process using Template: $PackerTemplateJsonFilePath"

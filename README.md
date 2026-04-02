@@ -1,8 +1,8 @@
 # PackerBaseAMI
 
 ## Synopsis
->
->[PackerBaseAMI](https://github.com/RobBiddle/PackerBaseAMI) is a PowerShell module which automates the process of creating a Windows Base AMI for use with AWS EC2.
+
+> [PackerBaseAMI](https://github.com/RobBiddle/PackerBaseAMI) is a PowerShell module which automates the process of creating a Windows Base AMI for use with AWS EC2.
 
 ## Description
 
@@ -11,7 +11,7 @@
 There are a few problems associated with utilizing the Amazon provided Base Windows AMI images:
 
 1. The Amazon provided Base Windows AMI images are frequently deprecated and deregistered.
-   - This causes problems if you are using those AMIs in CloudFormation stacks, as you may not be able to update the stack after the AMI is deregistered.  This problem is resolved by creating an new AMI based on the Amazon provided image.
+   - This causes problems if you are using those AMIs in CloudFormation stacks, as you may not be able to update the stack after the AMI is deregistered. This problem is resolved by creating an new AMI based on the Amazon provided image.
    - The AMI produced by this module will remain in your account until you choose to remove it.
 
 2. The Amazon provided Base Windows AMI images cannot be directly copied via the AWS API (cli / Powershell)
@@ -25,56 +25,57 @@ Upon importing the module, a single PowerShell cmdlet named **New-PackerBaseAMI*
 ## Table of Contents
 
 - [PackerBaseAMI](#packerbaseami)
-      - [Synopsis](#synopsis)
-      - [Description](#description)
-      - [Table of Contents](#table-of-contents)
-      - [Install](#install-)
-      - [Example](#example-)
-      - [Maintainer(s)](#maintainers-)
-      - [Contributing](#contributing-)
-      - [Credits](#credits-)
-      - [License](#license-)
-        - [Support](#support-)
+  - [Synopsis](#synopsis)
+  - [Description](#description)
+  - [Table of Contents](#table-of-contents)
+  - [Install](#install)
+  - [Example](#example)
+  - [Maintainer(s)](#maintainers)
+  - [Contributing](#contributing)
+  - [Credits](#credits)
+  - [License](#license)
+  - [Support](#support)
 
 ## Install
 
-- ### Install PowerShell
+### Install PowerShell
 
-  I suggest using the latest verison of [PowerShell](https://aka.ms/wmf5latest) if possible so that you can use PowerShellGet cmdlets
-  Download the latest PowerShell here: <https://aka.ms/wmf5latest>
+I suggest using the latest version of [PowerShell](https://aka.ms/wmf5latest) if possible so that you can use PowerShellGet cmdlets.
+Download the latest PowerShell here: <https://aka.ms/wmf5latest>
 
-- ### Install Packer
+### Install Packer
 
-  You have two options:
-   1. Install [Packer](https://packer.io) from the main site: [https://packer.io](https://packer.io)
-   2. Or use Chocolatey to install Packer:
-  - Install Chocolatey: [https://chocolatey.org/install](https://chocolatey.org/install)
-  - Install Packer package via Chocolatey:
+You have two options:
 
-        ```PowerShell
-        choco install packer
-        ```
+1. Install [Packer](https://packer.io) from the main site: [https://packer.io](https://packer.io)
+2. Or use Chocolatey to install Packer:
+   - Install Chocolatey: [https://chocolatey.org/install](https://chocolatey.org/install)
+   - Install Packer package via Chocolatey:
 
-- ### Install [PackerBaseAMI](https://github.com/RobBiddle/PackerBaseAMI) & Requirements
+     ```PowerShell
+     choco install packer
+     ```
 
-  (Assumes you have PowerShellGet and access to PowerShellGallery.com)
+### Install [PackerBaseAMI](https://github.com/RobBiddle/PackerBaseAMI) & Requirements
 
-  - [AWSPowerShell](https://www.powershellgallery.com/packages/AWSPowerShell) PowerShell Module
+(Assumes you have PowerShellGet and access to PowerShellGallery.com)
 
-      ```PowerShell
-      # If you want the old monolithic module:
-      # Install-Module AWSPowerShell
-      # Otherwise, if you want the new modularized modules with only the necessary cmdlets (recommended):
-      Install-Module AWS.Tools.Common,AWS.Tools.EC2,AWS.Tools.SecurityToken,AWS.Tools.SimpleSystemsManagement
-      ```
+- [AWSPowerShell](https://www.powershellgallery.com/packages/AWSPowerShell) PowerShell Module
 
-  - [PackerBaseAMI](https://github.com/RobBiddle/PackerBaseAMI) PowerShell Module
+  ```PowerShell
+  # If you want the old monolithic module:
+  # Install-Module AWSPowerShell
+  # Otherwise, if you want the new modularized modules with only the necessary cmdlets (recommended):
+  Install-Module AWS.Tools.Common,AWS.Tools.EC2,AWS.Tools.SecurityToken,AWS.Tools.SimpleSystemsManagement
+  ```
 
-```PowerShell
-Install-Module PackerBaseAMI
-```
+- [PackerBaseAMI](https://github.com/RobBiddle/PackerBaseAMI) PowerShell Module
 
-- ### Import the PackerBaseAMI module
+  ```PowerShell
+  Install-Module PackerBaseAMI
+  ```
+
+### Import the PackerBaseAMI module
 
 ```PowerShell
 Import-Module PackerBaseAMI
@@ -83,7 +84,7 @@ Import-Module PackerBaseAMI
 ## Example
 
 ```PowerShell
-New-PackerBaseAMI -AccountNumber '111111111111' -Alias ExampleAlias -BaseOS 'Windows_Server-2019-English-Full-Base' -IamRole 'ExampleRoleName' -Region 'us-east-1' -OutputDirectoryPath 'c:\example\directory'
+New-PackerBaseAMI -AccountNumber '111111111111' -Alias ExampleAlias -BaseOS 'Windows_Server-2025-English-Full-Base' -IamRole 'ExampleRoleName' -Region 'us-east-1' -InstanceType 't3.medium' -OutputDirectoryPath 'c:\example\directory'
 ```
 
 ## Maintainer(s)
@@ -100,7 +101,7 @@ New-PackerBaseAMI -AccountNumber '111111111111' -Alias ExampleAlias -BaseOS 'Win
 
 ## Credits
 
-- [Upic Solutions](https://upicsolutions.org/) for sponsoring my time to develop this project.  This code is being used as part of our mission to help [United Ways](https://www.unitedway.org/) be the best community solution leaders, in an increasingly competitive environment, by providing state of the art business and technology solutions
+- [Upic Solutions](https://upicsolutions.org/) for sponsoring my time to develop this project. This code is being used as part of our mission to help [United Ways](https://www.unitedway.org/) be the best community solution leaders, in an increasingly competitive environment, by providing state of the art business and technology solutions
 - [Hashicorp](https://www.hashicorp.com/) for creating [Packer](https://packer.io) and other fantastic open source projects
 - The [AWSPowerShell](https://www.powershellgallery.com/packages/AWSPowerShell) Devs for supporting all of us PowerShell users
 
