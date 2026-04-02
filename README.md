@@ -29,6 +29,8 @@ Upon importing the module, a single PowerShell cmdlet named **New-PackerBaseAMI*
   - [Description](#description)
   - [Table of Contents](#table-of-contents)
   - [Install](#install)
+  - [Windows Server 2025 Requirements](#windows-server-2025-requirements)
+  - [GitHub Actions Usage](#github-actions-usage)
   - [Example](#example)
   - [Maintainer(s)](#maintainers)
   - [Contributing](#contributing)
@@ -80,6 +82,78 @@ You have two options:
 ```PowerShell
 Import-Module PackerBaseAMI
 ```
+
+## Windows Server 2025 Requirements
+
+Windows Server 2025 removed the `wmic.exe` utility, which EC2Launch v2 depends on during instance initialization. This causes EC2Launch v2 to fail at its `preReady` stage, which prevents UserData from executing and stops the instance from shutting down after sysprep.
+
+To work around this, the module uses a different build strategy for Windows Server 2025:
+
+- **SSM Session Manager communicator** instead of `communicator = "none"` used by older OS versions
+- **Packer provisioners** connect via SSM to install the WMIC capability and run sysprep directly
+- **Temporary IAM instance profile** is created automatically by Packer with the minimum SSM permissions required, and cleaned up after the build completes
+
+This approach does not require direct network connectivity between the machine running Packer and the EC2 instance. All communication is tunneled through the AWS Systems Manager API.
+
+### Additional prerequisite for Windows Server 2025 builds
+
+The **AWS Session Manager plugin** must be installed on the machine running Packer. This is required for the SSM communicator to establish a session with the EC2 instance.
+
+- **Linux (GitHub Actions runners):**
+
+  ```bash
+  curl "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_64bit/session-manager-plugin.deb" -o "session-manager-plugin.deb"
+  sudo dpkg -i session-manager-plugin.deb
+  ```
+
+- **Windows:**
+
+  Download and install from: <https://s3.amazonaws.com/session-manager-downloads/plugin/latest/windows/SessionManagerPluginSetup.exe>
+
+- **macOS:**
+
+  ```bash
+  curl "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/mac_arm64/session-manager-plugin.pkg" -o "session-manager-plugin.pkg"
+  sudo installer -pkg session-manager-plugin.pkg -target /
+  ```
+
+Older Windows Server versions (2022, 2019, 2016, 2012) are unaffected and do not require the Session Manager plugin.
+
+## GitHub Actions Usage
+
+When building Windows Server 2025 images from a GitHub Actions workflow, add a step to install the Session Manager plugin before running the module:
+
+```yaml
+jobs:
+  build-ami:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/YourRole
+          aws-region: us-east-1
+
+      - name: Install Session Manager plugin
+        run: |
+          curl "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_64bit/session-manager-plugin.deb" -o "session-manager-plugin.deb"
+          sudo dpkg -i session-manager-plugin.deb
+
+      - name: Install Packer
+        run: |
+          choco install packer
+        # Or use hashicorp/setup-packer action
+
+      - name: Build AMI
+        shell: pwsh
+        run: |
+          Install-Module AWS.Tools.Common,AWS.Tools.EC2,AWS.Tools.SecurityToken,AWS.Tools.SimpleSystemsManagement -Force
+          Install-Module PackerBaseAMI -Force
+          Import-Module PackerBaseAMI
+          New-PackerBaseAMI -AccountNumber '111111111111' -BaseOS 'Windows_Server-2025-English-Full-Base' -IamRole 'YourRole' -Region 'us-east-1'
+```
+
+The Session Manager plugin step is only required for Windows Server 2025 builds. Workflows building older OS versions do not need it.
 
 ## Example
 

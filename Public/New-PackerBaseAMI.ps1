@@ -173,34 +173,86 @@ function New-PackerBaseAMI {
             $encrypt_boot = "true"
         }
 
-        # Build UserData for the Packer Template
-        if ($BaseOS -match '2012') {
-            # UserData for EC2Config
-            $UserDataFile = "$(Split-Path (Get-Module PackerBaseAMI).Path -Parent)\Private\UserDataEC2Config.xml"
-        } elseif ($BaseOS -match '2016|2019') {
-            # UserData for EC2Launch
-            $UserDataFile = "$(Split-Path (Get-Module PackerBaseAMI).Path -Parent)\Private\UserDataEC2Launch.xml"
-        } else {
-            # UserData for EC2Launch V2
-            $UserDataFile = "$(Split-Path (Get-Module PackerBaseAMI).Path -Parent)\Private\UserDataEC2LaunchV2.xml"
-        }
-
         # Build the Packer Template
-        $builders = [PSCustomObject]@{
-            type                  = "amazon-ebs"
-            communicator          = "none"
-            disable_stop_instance = "true"
-            encrypt_boot          = $encrypt_boot
-            region                = $Region
-            Vpc_Id                = $vpcId
-            Subnet_Id             = $subnetId
-            instance_type         = $InstanceType
-            source_ami            = $AmiToPack.ImageId
-            ami_name              = $NewAMIName
-            user_data_file        = $UserDataFile
-        }
-        $PackerTemplate = [PSCustomObject]@{
-            builders = @($builders)
+        if ($BaseOS -match '2025') {
+            # Windows Server 2025 removed wmic.exe which EC2Launch v2 depends on.
+            # This causes EC2Launch v2 to fail at the preReady stage and skip UserData.
+            # Use SSM Session Manager communicator to connect and run provisioners directly.
+            $SsmPolicyDocument = [PSCustomObject]@{
+                Version   = "2012-10-17"
+                Statement = @(
+                    [PSCustomObject]@{
+                        Effect   = "Allow"
+                        Action   = @(
+                            "ssm:UpdateInstanceInformation",
+                            "ssmmessages:CreateControlChannel",
+                            "ssmmessages:CreateDataChannel",
+                            "ssmmessages:OpenControlChannel",
+                            "ssmmessages:OpenDataChannel"
+                        )
+                        Resource = "*"
+                    }
+                )
+            }
+            $builders = [PSCustomObject]@{
+                type                                            = "amazon-ebs"
+                communicator                                    = "ssh"
+                ssh_username                                    = "Administrator"
+                ssh_interface                                   = "session_manager"
+                ssh_timeout                                     = "10m"
+                pause_before_ssm                                = "30s"
+                temporary_iam_instance_profile_policy_document  = $SsmPolicyDocument
+                shutdown_command                                = "powershell -Command `"& 'C:\Program Files\Amazon\EC2Launch\ec2launch.exe' sysprep --shutdown=true`""
+                encrypt_boot                                    = $encrypt_boot
+                region                                          = $Region
+                Vpc_Id                                          = $vpcId
+                Subnet_Id                                       = $subnetId
+                instance_type                                   = $InstanceType
+                source_ami                                      = $AmiToPack.ImageId
+                ami_name                                        = $NewAMIName
+            }
+            $provisioners = @(
+                [PSCustomObject]@{
+                    type   = "powershell"
+                    inline = @(
+                        "Write-Output 'Installing WMIC capability for EC2Launch v2 compatibility...'",
+                        "Add-WindowsCapability -Online -Name 'WMIC~~~~'",
+                        "Write-Output 'WMIC capability installed successfully.'"
+                    )
+                }
+            )
+            $PackerTemplate = [PSCustomObject]@{
+                builders     = @($builders)
+                provisioners = $provisioners
+            }
+        } else {
+            # Build UserData for the Packer Template
+            if ($BaseOS -match '2012') {
+                # UserData for EC2Config
+                $UserDataFile = "$(Split-Path (Get-Module PackerBaseAMI).Path -Parent)\Private\UserDataEC2Config.xml"
+            } elseif ($BaseOS -match '2016|2019') {
+                # UserData for EC2Launch
+                $UserDataFile = "$(Split-Path (Get-Module PackerBaseAMI).Path -Parent)\Private\UserDataEC2Launch.xml"
+            } else {
+                # UserData for EC2Launch V2
+                $UserDataFile = "$(Split-Path (Get-Module PackerBaseAMI).Path -Parent)\Private\UserDataEC2LaunchV2.xml"
+            }
+            $builders = [PSCustomObject]@{
+                type                  = "amazon-ebs"
+                communicator          = "none"
+                disable_stop_instance = "true"
+                encrypt_boot          = $encrypt_boot
+                region                = $Region
+                Vpc_Id                = $vpcId
+                Subnet_Id             = $subnetId
+                instance_type         = $InstanceType
+                source_ami            = $AmiToPack.ImageId
+                ami_name              = $NewAMIName
+                user_data_file        = $UserDataFile
+            }
+            $PackerTemplate = [PSCustomObject]@{
+                builders = @($builders)
+            }
         }
 
         # Export the Packer Template to a JSON file
