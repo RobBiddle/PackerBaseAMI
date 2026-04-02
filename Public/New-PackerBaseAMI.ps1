@@ -177,53 +177,30 @@ function New-PackerBaseAMI {
         if ($BaseOS -match '2025') {
             # Windows Server 2025 removed wmic.exe which EC2Launch v2 depends on.
             # This causes EC2Launch v2 to fail at the preReady stage and skip UserData.
-            # Use SSM Session Manager communicator to connect and run provisioners directly.
-            $SsmPolicyDocument = [PSCustomObject]@{
-                Version   = "2012-10-17"
-                Statement = @(
-                    [PSCustomObject]@{
-                        Effect   = "Allow"
-                        Action   = @(
-                            "ssm:UpdateInstanceInformation",
-                            "ssmmessages:CreateControlChannel",
-                            "ssmmessages:CreateDataChannel",
-                            "ssmmessages:OpenControlChannel",
-                            "ssmmessages:OpenDataChannel"
-                        )
-                        Resource = "*"
-                    }
-                )
-            }
+            # Use SSM Run Command after Packer launches the instance to install WMIC
+            # and trigger sysprep directly, bypassing UserData entirely.
+            $PackerBuildId = [guid]::NewGuid().ToString()
             $builders = [PSCustomObject]@{
-                type                                            = "amazon-ebs"
-                communicator                                    = "ssh"
-                ssh_username                                    = "Administrator"
-                ssh_interface                                   = "session_manager"
-                ssh_timeout                                     = "10m"
-                pause_before_ssm                                = "30s"
-                temporary_iam_instance_profile_policy_document  = $SsmPolicyDocument
-                shutdown_command                                = "powershell -Command `"& 'C:\Program Files\Amazon\EC2Launch\ec2launch.exe' sysprep --shutdown=true`""
-                encrypt_boot                                    = $encrypt_boot
-                region                                          = $Region
-                Vpc_Id                                          = $vpcId
-                Subnet_Id                                       = $subnetId
-                instance_type                                   = $InstanceType
-                source_ami                                      = $AmiToPack.ImageId
-                ami_name                                        = $NewAMIName
-            }
-            $provisioners = @(
-                [PSCustomObject]@{
-                    type   = "powershell"
-                    inline = @(
-                        "Write-Output 'Installing WMIC capability for EC2Launch v2 compatibility...'",
-                        "Add-WindowsCapability -Online -Name 'WMIC~~~~'",
-                        "Write-Output 'WMIC capability installed successfully.'"
-                    )
+                type                  = "amazon-ebs"
+                communicator          = "none"
+                disable_stop_instance = "true"
+                encrypt_boot          = $encrypt_boot
+                region                = $Region
+                Vpc_Id                = $vpcId
+                Subnet_Id             = $subnetId
+                instance_type         = $InstanceType
+                source_ami            = $AmiToPack.ImageId
+                ami_name              = $NewAMIName
+                run_tags              = [PSCustomObject]@{
+                    PackerBuildId = $PackerBuildId
                 }
-            )
+                aws_polling           = [PSCustomObject]@{
+                    delay_seconds = 30
+                    max_attempts  = 90
+                }
+            }
             $PackerTemplate = [PSCustomObject]@{
-                builders     = @($builders)
-                provisioners = $provisioners
+                builders = @($builders)
             }
         } else {
             # Build UserData for the Packer Template
@@ -289,7 +266,85 @@ function New-PackerBaseAMI {
         
         Write-Output "Packer Process ID: $($PackerProcess.Id)"
         Write-Output "Logfiles will be prefixed with $NewAMIName-$RunDateTime and located in $((Get-Item $OutputDirectoryPath).FullName)"
-        Write-Output "This process will take roughly 20 minutes to compete.  10 minutes if you chose not to encrypt."
+
+        if ($BaseOS -match '2025') {
+            # Windows Server 2025: EC2Launch v2 fails at preReady because wmic.exe was removed.
+            # The installEgpuManager task uses wmic.exe to check for Elastic Graphics support.
+            # Installing WMIC is impractical (requires Windows Update or FoD ISO not available on EC2).
+            # Instead, we remove the broken task from the EC2Launch v2 config via SSM, then sysprep.
+            # This fix persists in the AMI so instances launched from it won't hit the same issue.
+            Write-Output "Windows Server 2025 detected. Will patch EC2Launch v2 config and run sysprep via SSM..."
+
+            # Wait for the Packer instance to launch and find it by the build tag
+            Write-Output "Waiting for Packer instance to launch..."
+            $instanceId = $null
+            $ssmTimeout = (Get-Date).AddMinutes(5)
+            while (-not $instanceId -and (Get-Date) -lt $ssmTimeout) {
+                Start-Sleep -Seconds 10
+                $reservation = Get-EC2Instance @AwsCredentialParams -Region $Region -Filter @(
+                    @{Name = "tag:PackerBuildId"; Values = @($PackerBuildId)},
+                    @{Name = "instance-state-name"; Values = @("running")}
+                )
+                if ($reservation.Instances) {
+                    $instanceId = $reservation.Instances[0].InstanceId
+                }
+            }
+
+            if (-not $instanceId) {
+                Write-Warning "Could not find Packer instance within timeout. Check Packer logs for errors."
+                return
+            }
+            Write-Output "Found Packer instance: $instanceId"
+
+            # Wait for SSM Agent to come online
+            Write-Output "Waiting for SSM Agent to register..."
+            $ssmReady = $false
+            $ssmTimeout = (Get-Date).AddMinutes(5)
+            while (-not $ssmReady -and (Get-Date) -lt $ssmTimeout) {
+                Start-Sleep -Seconds 15
+                try {
+                    $ssmInfo = Get-SSMInstanceInformation @AwsCredentialParams -Region $Region `
+                        -InstanceInformationFilterList @{Key = "InstanceIds"; ValueSet = @($instanceId)}
+                    if ($ssmInfo -and $ssmInfo.PingStatus -eq "Online") {
+                        $ssmReady = $true
+                    }
+                } catch {
+                    # SSM not ready yet, retry
+                }
+            }
+
+            if (-not $ssmReady) {
+                Write-Warning "SSM Agent did not come online within timeout. Check instance: $instanceId"
+                return
+            }
+            Write-Output "SSM Agent online. Patching EC2Launch v2 config and running sysprep..."
+
+            # Send SSM Run Command to remove the installEgpuManager task and trigger sysprep
+            $ssmCommand = Send-SSMCommand @AwsCredentialParams -Region $Region `
+                -InstanceId @($instanceId) `
+                -DocumentName "AWS-RunPowerShellScript" `
+                -Parameter @{
+                    commands = @(
+                        "Start-Transcript -Path 'C:\ProgramData\Amazon\EC2Launch\log\PackerBaseAMI-SSM.log' -Force",
+                        "Write-Output 'Patching EC2Launch v2 config to remove installEgpuManager task (requires wmic.exe removed in Server 2025)...'",
+                        "`$configPath = 'C:\ProgramData\Amazon\EC2Launch\config\agent-config.yml'",
+                        "`$config = Get-Content -Path `$configPath -Raw",
+                        "Write-Output `"Original config length: `$(`$config.Length) characters`"",
+                        "`$config = `$config -replace '(?m)^\s*-\s*task:\s*installEgpuManager.*(\r?\n)', ''",
+                        "Set-Content -Path `$configPath -Value `$config -Force",
+                        "Write-Output 'installEgpuManager task removed from EC2Launch v2 config.'",
+                        "Write-Output 'Running EC2Launch v2 sysprep with shutdown...'",
+                        "Stop-Transcript",
+                        "& 'C:\Program Files\Amazon\EC2Launch\ec2launch.exe' sysprep --shutdown=true"
+                    )
+                }
+
+            Write-Output "SSM Command sent (ID: $($ssmCommand.CommandId))."
+            Write-Output "Transcript log on instance: C:\ProgramData\Amazon\EC2Launch\log\PackerBaseAMI-SSM.log"
+            Write-Output "Packer (PID: $($PackerProcess.Id)) is waiting for shutdown, then will create the AMI."
+        }
+
+        Write-Output "This process will take roughly 20 minutes to complete. 10 minutes if you chose not to encrypt."
     }
     End {
 
