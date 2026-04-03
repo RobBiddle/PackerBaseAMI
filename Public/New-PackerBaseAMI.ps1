@@ -69,13 +69,13 @@ function New-PackerBaseAMI {
 
         # AWS Region
         [Parameter(Mandatory = $true,
-            ValueFromPipelineByPropertyName = $true)]        
+            ValueFromPipelineByPropertyName = $true)]
         [String]
         $Region,
         
         # Output Path for Log Files, if not specified then output is to users' home Directory
         [Parameter(Mandatory = $false,
-            ValueFromPipelineByPropertyName = $false)]    
+            ValueFromPipelineByPropertyName = $false)]
         [ValidateScript( {
                 if ((Test-Path $_)) {
                     Write-Output "Outputing log files to: $_"
@@ -165,7 +165,12 @@ function New-PackerBaseAMI {
 
         $NewAMIName = "$($AccountNumber)_$($AmiToPack.Name)"
         $vpcId = (Get-EC2Vpc @AwsCredentialParams -Region $Region | Select-Object -First 1).VpcId
-        $subnetId = (Get-EC2Subnet @AwsCredentialParams  -Region $Region | Where-Object VpcId -eq $vpcId | Select-Object -First 1).SubnetId
+        $supportedAZs = (Get-EC2InstanceTypeOffering @AwsCredentialParams -Region $Region -LocationType availability-zone -Filter @{Name='instance-type'; Values=@($InstanceType)}).Location
+        $subnetId = (Get-EC2Subnet @AwsCredentialParams -Region $Region | Where-Object { $_.VpcId -eq $vpcId -and $_.AvailabilityZone -in $supportedAZs } | Select-Object -First 1).SubnetId
+        if (-not $subnetId) {
+            Write-Error "No subnet found in an availability zone that supports instance type '$InstanceType' in region '$Region'."
+            Break
+        }
         if ($DoNotEncrypt) {
             $encrypt_boot = "false"
         }
