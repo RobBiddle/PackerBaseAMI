@@ -29,9 +29,9 @@ Upon importing the module, a single PowerShell cmdlet named **New-PackerBaseAMI*
   - [Description](#description)
   - [Table of Contents](#table-of-contents)
   - [Install](#install)
-  - [Windows Server 2025 Requirements](#windows-server-2025-requirements)
-    - [Networking requirements for Windows Server 2025 builds](#networking-requirements-for-windows-server-2025-builds)
-    - [IAM permissions for Windows Server 2025 builds](#iam-permissions-for-windows-server-2025-builds)
+  - [Windows Server 2022 / 2025 Requirements](#windows-server-2022--2025-requirements)
+    - [Networking requirements for Windows Server 2022 / 2025 builds](#networking-requirements-for-windows-server-2022--2025-builds)
+    - [IAM permissions for Windows Server 2022 / 2025 builds](#iam-permissions-for-windows-server-2022--2025-builds)
   - [GitHub Actions Usage](#github-actions-usage)
   - [Example](#example)
   - [Maintainer(s)](#maintainers)
@@ -85,11 +85,11 @@ You have two options:
 Import-Module PackerBaseAMI
 ```
 
-## Windows Server 2025 Requirements
+## Windows Server 2022 / 2025 Requirements
 
-Windows Server 2025 removed the `wmic.exe` utility, which EC2Launch v2 depends on during instance initialization. This causes EC2Launch v2 to fail at its `preReady` stage, which prevents UserData from executing and stops the instance from shutting down after sysprep.
+Windows Server 2025 removed the `wmic.exe` utility, which EC2Launch v2 depends on during instance initialization. This causes EC2Launch v2 to fail at its `preReady` stage, which prevents UserData from executing and stops the instance from shutting down after sysprep. Recent Server 2022 base AMIs running the same EC2Launch v2 build hit the same class of `preReady` failure, so 2022 uses the same workaround.
 
-To work around this, the module uses a different build strategy for Windows Server 2025:
+To work around this, the module uses a different build strategy for Windows Server 2022 and 2025:
 
 - **SSM Run Command** is used instead of UserData to execute commands on the instance
 - After Packer launches the instance, the module waits for the SSM Agent to come online, then **removes the `installEgpuManager` task** from the EC2Launch v2 configuration — this is the specific task that depends on `wmic.exe`
@@ -107,16 +107,16 @@ To make the SSM-based build self-contained, the module also:
 - **Prefers a public subnet** when selecting where to launch the build instance, falling back to any subnet whose AZ supports the chosen instance type. This is so the SSM Agent has a network path to reach the SSM endpoints.
 - Sets `associate_public_ip_address = "true"` so the build instance gets a public IP even if the subnet's default doesn't auto-assign one.
 
-### Networking requirements for Windows Server 2025 builds
+### Networking requirements for Windows Server 2022 / 2025 builds
 
 The build instance must be able to reach the SSM API endpoints (`ssm`, `ssmmessages`, `ec2messages` on port 443). The default behavior above (public subnet + public IP) satisfies this. If your VPC has only private subnets, you must provide one of:
 
 - A NAT gateway with a route from the chosen subnet to it, or
 - VPC endpoints for `com.amazonaws.<region>.ssm`, `com.amazonaws.<region>.ssmmessages`, and `com.amazonaws.<region>.ec2messages` reachable from the chosen subnet.
 
-Older Windows Server versions (2022, 2019, 2016, 2012) build via UserData and do not require SSM reachability.
+Older Windows Server versions (2019, 2016, 2012) build via UserData and do not require SSM reachability.
 
-### IAM permissions for Windows Server 2025 builds
+### IAM permissions for Windows Server 2022 / 2025 builds
 
 The IAM role used for the build must have the following permissions in addition to the existing EC2 and STS permissions:
 
@@ -133,7 +133,7 @@ IAM (for the temporary instance profile Packer creates and deletes around the bu
 - `iam:AddRoleToInstanceProfile`, `iam:RemoveRoleFromInstanceProfile`
 - `iam:PassRole`
 
-Older Windows Server versions (2022, 2019, 2016, 2012) are unaffected and do not require these additional permissions.
+Older Windows Server versions (2019, 2016, 2012) are unaffected and do not require these additional permissions.
 
 ## GitHub Actions Usage
 

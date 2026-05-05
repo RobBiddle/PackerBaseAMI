@@ -186,11 +186,12 @@ function New-PackerBaseAMI {
         }
 
         # Build the Packer Template
-        if ($BaseOS -match '2025') {
-            # Windows Server 2025 removed wmic.exe which EC2Launch v2 depends on.
-            # This causes EC2Launch v2 to fail at the preReady stage and skip UserData.
-            # Use SSM Run Command after Packer launches the instance to install WMIC
-            # and trigger sysprep directly, bypassing UserData entirely.
+        if ($BaseOS -match '2022|2025') {
+            # Windows Server 2025 removed wmic.exe which EC2Launch v2 depends on, and
+            # newer EC2Launch v2 / Server 2022 base AMIs hit the same class of preReady
+            # failure that prevents UserData (and therefore sysprep) from running.
+            # Use SSM Run Command after Packer launches the instance to patch the
+            # EC2Launch v2 config and trigger sysprep directly, bypassing UserData entirely.
             $PackerBuildId = [guid]::NewGuid().ToString()
             # Attach a temporary instance profile so SSM Agent can register without
             # depending on Default Host Management Configuration (DHMC). Packer
@@ -222,8 +223,8 @@ function New-PackerBaseAMI {
                     PackerBuildId = $PackerBuildId
                 }
                 aws_polling                                     = [PSCustomObject]@{
-                    delay_seconds = 30
-                    max_attempts  = 90
+                    delay_seconds = 10
+                    max_attempts  = 330
                 }
             }
             $PackerTemplate = [PSCustomObject]@{
@@ -294,13 +295,15 @@ function New-PackerBaseAMI {
         Write-Output "Packer Process ID: $($PackerProcess.Id)"
         Write-Output "Logfiles will be prefixed with $NewAMIName-$RunDateTime and located in $((Get-Item $OutputDirectoryPath).FullName)"
 
-        if ($BaseOS -match '2025') {
-            # Windows Server 2025: EC2Launch v2 fails at preReady because wmic.exe was removed.
-            # The installEgpuManager task uses wmic.exe to check for Elastic Graphics support.
-            # Installing WMIC is impractical (requires Windows Update or FoD ISO not available on EC2).
-            # Instead, we remove the broken task from the EC2Launch v2 config via SSM, then sysprep.
-            # This fix persists in the AMI so instances launched from it won't hit the same issue.
-            Write-Output "Windows Server 2025 detected. Will patch EC2Launch v2 config and run sysprep via SSM..."
+        if ($BaseOS -match '2022|2025') {
+            # EC2Launch v2 fails at preReady on current Server 2025 (wmic.exe removed) and
+            # on recent Server 2022 base AMIs running the same agent build, which prevents
+            # UserData from executing and stops the instance from shutting down after sysprep.
+            # The installEgpuManager task on 2025 uses wmic.exe to check for Elastic Graphics
+            # support; we remove that task defensively (no-op if not present) and then call
+            # ec2launch.exe sysprep directly via SSM, which runs sysprep regardless of the
+            # first-boot pipeline state. The config change persists in the AMI.
+            Write-Output "Server 2022/2025 detected. Will patch EC2Launch v2 config and run sysprep via SSM..."
 
             # Wait for the Packer instance to launch and find it by the build tag
             Write-Output "Waiting for Packer instance to launch..."
@@ -326,9 +329,9 @@ function New-PackerBaseAMI {
             # Wait for SSM Agent to come online
             Write-Output "Waiting for SSM Agent to register..."
             $ssmReady = $false
-            $ssmTimeout = (Get-Date).AddMinutes(5)
+            $ssmTimeout = (Get-Date).AddMinutes(10)
             while (-not $ssmReady -and (Get-Date) -lt $ssmTimeout) {
-                Start-Sleep -Seconds 15
+                Start-Sleep -Seconds 5
                 try {
                     $ssmInfo = Get-SSMInstanceInformation @AwsCredentialParams -Region $Region `
                         -InstanceInformationFilterList @{Key = "InstanceIds"; ValueSet = @($instanceId)}
