@@ -99,6 +99,8 @@ To work around this, the module uses a different build strategy for Windows Serv
 
 SSM Agent runs as an independent Windows service that starts on boot regardless of EC2Launch v2 status. The config change persists in the AMI, so instances launched from it will not hit the same issue. The `installEgpuManager` task is only relevant for Elastic Graphics (eGPU) instances and is safe to remove for standard workloads.
 
+> **Note: the SSM Run Command will stay in "In Progress" until it times out — this is expected.** The last step of the SSM payload triggers `ec2launch.exe sysprep --shutdown=true`, which shuts down the OS (and the SSM Agent with it) before the agent can report completion to the Run Command API. SSM leaves the command in `InProgress` until its delivery timeout fires (default 1 hour) and then transitions it to `DeliveryTimedOut`. The actual success signal is the build instance reaching the `stopped` state and Packer creating the AMI from its root volume — not the Run Command status. This is a well-known consequence of running Send-SSMCommand payloads that reboot or shut down the target.
+
 To make the SSM-based build self-contained, the module also:
 
 - Attaches a **temporary IAM instance profile** to the build instance (created and deleted by Packer for the duration of the build) granting `ssm:*`, `ssmmessages:*`, and `ec2messages:*`. This removes the dependency on Default Host Management Configuration (DHMC) being enabled in the account.
