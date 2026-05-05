@@ -166,7 +166,14 @@ function New-PackerBaseAMI {
         $NewAMIName = "$($AccountNumber)_$($AmiToPack.Name)"
         $vpcId = (Get-EC2Vpc @AwsCredentialParams -Region $Region | Select-Object -First 1).VpcId
         $supportedAZs = (Get-EC2InstanceTypeOffering @AwsCredentialParams -Region $Region -LocationType availability-zone -Filter @{Name='instance-type'; Values=@($InstanceType)}).Location
-        $subnetId = (Get-EC2Subnet @AwsCredentialParams -Region $Region | Where-Object { $_.VpcId -eq $vpcId -and $_.AvailabilityZone -in $supportedAZs } | Select-Object -First 1).SubnetId
+        # Prefer public subnets so the build instance can reach SSM/EC2Messages endpoints
+        # without depending on NAT or VPC endpoints. Fall back to any matching subnet.
+        $candidateSubnets = Get-EC2Subnet @AwsCredentialParams -Region $Region |
+            Where-Object { $_.VpcId -eq $vpcId -and $_.AvailabilityZone -in $supportedAZs }
+        $subnetId = ($candidateSubnets | Where-Object { $_.MapPublicIpOnLaunch } | Select-Object -First 1).SubnetId
+        if (-not $subnetId) {
+            $subnetId = ($candidateSubnets | Select-Object -First 1).SubnetId
+        }
         if (-not $subnetId) {
             Write-Error "No subnet found in an availability zone that supports instance type '$InstanceType' in region '$Region'."
             Break
@@ -185,21 +192,36 @@ function New-PackerBaseAMI {
             # Use SSM Run Command after Packer launches the instance to install WMIC
             # and trigger sysprep directly, bypassing UserData entirely.
             $PackerBuildId = [guid]::NewGuid().ToString()
+            # Attach a temporary instance profile so SSM Agent can register without
+            # depending on Default Host Management Configuration (DHMC). Packer
+            # creates and deletes this profile around the build.
+            $TempInstanceProfilePolicy = [PSCustomObject]@{
+                Version   = "2012-10-17"
+                Statement = @(
+                    [PSCustomObject]@{
+                        Effect   = "Allow"
+                        Action   = @("ssm:*", "ssmmessages:*", "ec2messages:*")
+                        Resource = "*"
+                    }
+                )
+            }
             $builders = [PSCustomObject]@{
-                type                  = "amazon-ebs"
-                communicator          = "none"
-                disable_stop_instance = "true"
-                encrypt_boot          = $encrypt_boot
-                region                = $Region
-                Vpc_Id                = $vpcId
-                Subnet_Id             = $subnetId
-                instance_type         = $InstanceType
-                source_ami            = $AmiToPack.ImageId
-                ami_name              = $NewAMIName
-                run_tags              = [PSCustomObject]@{
+                type                                            = "amazon-ebs"
+                communicator                                    = "none"
+                disable_stop_instance                           = "true"
+                encrypt_boot                                    = $encrypt_boot
+                region                                          = $Region
+                Vpc_Id                                          = $vpcId
+                Subnet_Id                                       = $subnetId
+                associate_public_ip_address                     = "true"
+                instance_type                                   = $InstanceType
+                source_ami                                      = $AmiToPack.ImageId
+                ami_name                                        = $NewAMIName
+                temporary_iam_instance_profile_policy_document  = $TempInstanceProfilePolicy
+                run_tags                                        = [PSCustomObject]@{
                     PackerBuildId = $PackerBuildId
                 }
-                aws_polling           = [PSCustomObject]@{
+                aws_polling                                     = [PSCustomObject]@{
                     delay_seconds = 30
                     max_attempts  = 90
                 }

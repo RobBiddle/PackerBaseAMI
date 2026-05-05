@@ -30,6 +30,8 @@ Upon importing the module, a single PowerShell cmdlet named **New-PackerBaseAMI*
   - [Table of Contents](#table-of-contents)
   - [Install](#install)
   - [Windows Server 2025 Requirements](#windows-server-2025-requirements)
+    - [Networking requirements for Windows Server 2025 builds](#networking-requirements-for-windows-server-2025-builds)
+    - [IAM permissions for Windows Server 2025 builds](#iam-permissions-for-windows-server-2025-builds)
   - [GitHub Actions Usage](#github-actions-usage)
   - [Example](#example)
   - [Maintainer(s)](#maintainers)
@@ -95,14 +97,39 @@ To work around this, the module uses a different build strategy for Windows Serv
 - The Packer template uses `communicator = "none"` with `disable_stop_instance = "true"`, so Packer waits for the instance to shut down on its own after sysprep completes
 - The instance is tagged with a unique `PackerBuildId` so the module can find it after launch
 
-This approach requires no additional software, plugins, network configuration, or internet access. SSM Agent runs as an independent Windows service that starts on boot regardless of EC2Launch v2 status. The config change persists in the AMI, so instances launched from it will not hit the same issue. The `installEgpuManager` task is only relevant for Elastic Graphics (eGPU) instances and is safe to remove for standard workloads.
+SSM Agent runs as an independent Windows service that starts on boot regardless of EC2Launch v2 status. The config change persists in the AMI, so instances launched from it will not hit the same issue. The `installEgpuManager` task is only relevant for Elastic Graphics (eGPU) instances and is safe to remove for standard workloads.
+
+To make the SSM-based build self-contained, the module also:
+
+- Attaches a **temporary IAM instance profile** to the build instance (created and deleted by Packer for the duration of the build) granting `ssm:*`, `ssmmessages:*`, and `ec2messages:*`. This removes the dependency on Default Host Management Configuration (DHMC) being enabled in the account.
+- **Prefers a public subnet** when selecting where to launch the build instance, falling back to any subnet whose AZ supports the chosen instance type. This is so the SSM Agent has a network path to reach the SSM endpoints.
+- Sets `associate_public_ip_address = "true"` so the build instance gets a public IP even if the subnet's default doesn't auto-assign one.
+
+### Networking requirements for Windows Server 2025 builds
+
+The build instance must be able to reach the SSM API endpoints (`ssm`, `ssmmessages`, `ec2messages` on port 443). The default behavior above (public subnet + public IP) satisfies this. If your VPC has only private subnets, you must provide one of:
+
+- A NAT gateway with a route from the chosen subnet to it, or
+- VPC endpoints for `com.amazonaws.<region>.ssm`, `com.amazonaws.<region>.ssmmessages`, and `com.amazonaws.<region>.ec2messages` reachable from the chosen subnet.
+
+Older Windows Server versions (2022, 2019, 2016, 2012) build via UserData and do not require SSM reachability.
 
 ### IAM permissions for Windows Server 2025 builds
 
-The IAM role used for the build must have the following SSM permissions in addition to the existing EC2 and STS permissions:
+The IAM role used for the build must have the following permissions in addition to the existing EC2 and STS permissions:
+
+SSM:
 
 - `ssm:SendCommand`
 - `ssm:DescribeInstanceInformation`
+
+IAM (for the temporary instance profile Packer creates and deletes around the build):
+
+- `iam:CreateRole`, `iam:DeleteRole`
+- `iam:CreateInstanceProfile`, `iam:DeleteInstanceProfile`, `iam:GetInstanceProfile`
+- `iam:PutRolePolicy`, `iam:DeleteRolePolicy`
+- `iam:AddRoleToInstanceProfile`, `iam:RemoveRoleFromInstanceProfile`
+- `iam:PassRole`
 
 Older Windows Server versions (2022, 2019, 2016, 2012) are unaffected and do not require these additional permissions.
 
