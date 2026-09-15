@@ -54,7 +54,12 @@ function Get-AwsTemporaryCredential {
         $Region,
         [Parameter(Mandatory = $true, ValueFromPipelineByPropertyName = $false, ParameterSetName = "Set 1")]
         [String]
-        $IamRole
+        $IamRole,
+        # Requested session length. If the role does not allow it (MaxSessionDuration, role chaining),
+        # a warning is written and the default 1-hour session is used instead.
+        [Parameter(Mandatory = $false, ValueFromPipelineByPropertyName = $false, ParameterSetName = "Set 1")]
+        [Int]
+        $DurationInSeconds
     )
     function Get-MyAwsCredentials {
         param
@@ -120,6 +125,22 @@ function Get-AwsTemporaryCredential {
     $AwsTemporaryCredentials | Add-Member -MemberType NoteProperty -Name "AccountNumber" -Value $AccountNumber
     $AwsTemporaryCredentials | Add-Member -MemberType NoteProperty -Name "Region" -Value $Region
     $AwsTemporaryCredentials | Add-Member -MemberType NoteProperty -Name "RoleName" -Value $IamRole
-    $AwsTemporaryCredentials | Add-Member -MemberType NoteProperty -Name "Credentials" -Value (Use-STSRole -RoleArn "arn:aws:iam::$($AccountNumber):role/$($IamRole)" -RoleSessionName "$($Alias)" -Credential $AwsProfile.SourceCredentials ).Credentials
+    $StsRoleParams = @{
+        RoleArn         = "arn:aws:iam::$($AccountNumber):role/$($IamRole)"
+        RoleSessionName = "$($Alias)"
+        Credential      = $AwsProfile.SourceCredentials
+    }
+    $StsRole = $null
+    if ($DurationInSeconds) {
+        try {
+            $StsRole = Use-STSRole @StsRoleParams -DurationInSeconds $DurationInSeconds -ErrorAction Stop
+        } catch {
+            Write-Warning "Could not obtain a $([math]::Round($DurationInSeconds / 3600, 1))-hour session for role $($IamRole) ($($_.Exception.Message)). Falling back to the default 1-hour session; raise the role's MaxSessionDuration to allow longer builds."
+        }
+    }
+    if (-not $StsRole) {
+        $StsRole = Use-STSRole @StsRoleParams
+    }
+    $AwsTemporaryCredentials | Add-Member -MemberType NoteProperty -Name "Credentials" -Value $StsRole.Credentials
     Return $AwsTemporaryCredentials
 }
