@@ -1,5 +1,7 @@
 # PackerBaseAMI
 
+[![PowerShell Gallery Downloads](https://img.shields.io/powershellgallery/dt/PackerBaseAMI)](https://www.powershellgallery.com/packages/PackerBaseAMI/)
+
 ## Synopsis
 
 > [PackerBaseAMI](https://github.com/RobBiddle/PackerBaseAMI) is a PowerShell module which automates the process of creating a Windows Base AMI for use with AWS EC2.
