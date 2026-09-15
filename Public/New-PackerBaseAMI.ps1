@@ -98,6 +98,30 @@ function New-PackerBaseAMI {
         [String]
         $InstanceType = 't3.medium',
 
+        # Windows Server 2022/2025 only: the account context Sysprep runs under. Microsoft does
+        # not support running Sysprep as Local System (broken Start menu / Explorer / Settings /
+        # Office sign-in from a skipped XAML AppX registration):
+        # https://learn.microsoft.com/en-us/troubleshoot/windows-client/setup-upgrade-and-drivers/sysprep-as-system-windows-11
+        # InteractiveAutoLogon: one reboot, then Sysprep runs in a real console session as the
+        #   built-in Administrator (the context with a positive Server 2025 report).
+        # BatchLogon: AWS's AWSEC2-RunSysprep-style batch logon as the built-in Administrator,
+        #   no reboot; needed on Server Core, which has no Explorer shell for the console launcher.
+        # If not specified, the default is InteractiveAutoLogon for Full (Desktop Experience)
+        # images of both 2022 and 2025, and BatchLogon for Core images.
+        [Parameter(Mandatory = $false,
+            ValueFromPipelineByPropertyName = $false)]
+        [ValidateSet('InteractiveAutoLogon', 'BatchLogon')]
+        [String]
+        $SysprepExecutionContext,
+
+        # Windows Server 2025 only: also bake a per-user logon task into the AMI that re-registers
+        # the affected XAML packages on every sign-in (Microsoft's remediation), as defense in
+        # depth against a residual skip or a future cumulative update. Off by default.
+        [Parameter(Mandatory = $false,
+            ValueFromPipelineByPropertyName = $false)]
+        [Switch]
+        $InstallXamlLogonMitigation,
+
         [Parameter(Mandatory = $false,
             ValueFromPipelineByPropertyName = $false)]
             [switch]
@@ -296,14 +320,25 @@ function New-PackerBaseAMI {
         Write-Output "Logfiles will be prefixed with $NewAMIName-$RunDateTime and located in $((Get-Item $OutputDirectoryPath).FullName)"
 
         if ($BaseOS -match '2022|2025') {
-            # EC2Launch v2 fails at preReady on current Server 2025 (wmic.exe removed) and
-            # on recent Server 2022 base AMIs running the same agent build, which prevents
-            # UserData from executing and stops the instance from shutting down after sysprep.
-            # The installEgpuManager task on 2025 uses wmic.exe to check for Elastic Graphics
-            # support; we remove that task defensively (no-op if not present) and then call
-            # ec2launch.exe sysprep directly via SSM, which runs sysprep regardless of the
-            # first-boot pipeline state. The config change persists in the AMI.
-            Write-Output "Server 2022/2025 detected. Will patch EC2Launch v2 config and run sysprep via SSM..."
+            # Microsoft does not support running Sysprep as Local System, and on Server 2025 doing
+            # so silently skips AppX registration for certain XAML packages, so instances launched
+            # from the AMI have a broken Start menu / Explorer / Settings and crashing Office
+            # sign-in:
+            # https://learn.microsoft.com/en-us/troubleshoot/windows-client/setup-upgrade-and-drivers/sysprep-as-system-windows-11
+            # SSM Run Command runs as SYSTEM, so instead of calling ec2launch sysprep directly we
+            # send an orchestrator that runs Sysprep under the built-in Administrator, verifies the
+            # image actually generalized, and reports Success/Failed before the instance shuts down.
+            # It still removes the installEgpuManager task (needs wmic.exe, gone in Server 2025).
+
+            # Default the Sysprep context unless the caller chose one. Microsoft's unsupported
+            # "Sysprep as Local System" guidance now spans Windows 10/11 and Server 2022/2025, so
+            # both 2022 and 2025 run Sysprep as the built-in Administrator. Full (Desktop
+            # Experience) images use the interactive console context; Core images fall back to the
+            # batch context, which does not need an Explorer shell for the launcher.
+            if (-not $SysprepExecutionContext) {
+                $SysprepExecutionContext = if ($BaseOS -match 'Core') { 'BatchLogon' } else { 'InteractiveAutoLogon' }
+            }
+            Write-Output "Server 2022/2025 detected. Sysprep will run as the built-in Administrator ($SysprepExecutionContext)..."
 
             # Wait for the Packer instance to launch and find it by the build tag
             Write-Output "Waiting for Packer instance to launch..."
@@ -347,31 +382,124 @@ function New-PackerBaseAMI {
                 Write-Warning "SSM Agent did not come online within timeout. Check instance: $instanceId"
                 return
             }
-            Write-Output "SSM Agent online. Patching EC2Launch v2 config and running sysprep..."
+            Write-Output "SSM Agent online. Sending sysprep orchestration script..."
 
-            # Send SSM Run Command to remove the installEgpuManager task and trigger sysprep
+            # Build the on-instance script from the module's template files. The scripts live under
+            # Templates\ (not Private\, so the module manifest does not dot-source them on import),
+            # and are shipped verbatim: no backtick escaping, no here-string embedded in the module.
+            # SSM writes the "commands" lines into a single .ps1 on the instance, so functions,
+            # here-strings and exit codes all behave normally.
+            $ModuleRoot = Split-Path (Get-Module PackerBaseAMI).Path -Parent
+            $Orchestrator = Get-Content -Path (Join-Path $ModuleRoot 'Templates\Invoke-PackerBaseAMISysprep.ps1') -Raw
+            $LauncherB64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(
+                    (Get-Content -Path (Join-Path $ModuleRoot 'Templates\Invoke-PackerBaseAMISysprepLauncher.ps1') -Raw)))
+            $XamlStubB64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(
+                    (Get-Content -Path (Join-Path $ModuleRoot 'Templates\Register-XamlPackages.ps1') -Raw)))
+            $Orchestrator = $Orchestrator.
+                Replace('__SYSPREP_CONTEXT__', $SysprepExecutionContext).
+                Replace('__BUILD_ID__', $PackerBuildId).
+                Replace('__INSTALL_XAML__', $(if ($InstallXamlLogonMitigation) { 'True' } else { 'False' })).
+                Replace('__LAUNCHER_B64__', $LauncherB64).
+                Replace('__XAML_STUB_B64__', $XamlStubB64)
+
+            # The orchestrator plus the embedded launcher/stub is ~65 KB, which would approach the
+            # 64 KB SSM document limit once JSON-encoded. Gzip+base64 it (to ~23 KB) and send a
+            # tiny bootstrap that decompresses and runs it in-process, so `exit 3010`/`exit 0`/
+            # `exit 1` still propagate to the Run Command (verified: `& [ScriptBlock]::Create()`
+            # preserves the exit code).
+            $memStream = New-Object System.IO.MemoryStream
+            $gzipStream = New-Object System.IO.Compression.GZipStream($memStream, [System.IO.Compression.CompressionMode]::Compress)
+            $orchBytes = [System.Text.Encoding]::UTF8.GetBytes($Orchestrator)
+            $gzipStream.Write($orchBytes, 0, $orchBytes.Length)
+            $gzipStream.Close()
+            $OrchestratorPayload = [Convert]::ToBase64String($memStream.ToArray())
+            $memStream.Dispose()
+
+            $Bootstrap = @"
+`$ErrorActionPreference = 'Stop'
+`$PBA_Payload = '$OrchestratorPayload'
+`$PBA_ms = New-Object System.IO.MemoryStream(,[Convert]::FromBase64String(`$PBA_Payload))
+`$PBA_gz = New-Object System.IO.Compression.GZipStream(`$PBA_ms, [System.IO.Compression.CompressionMode]::Decompress)
+`$PBA_sr = New-Object System.IO.StreamReader(`$PBA_gz, [System.Text.Encoding]::UTF8)
+`$PBA_code = `$PBA_sr.ReadToEnd()
+`$PBA_sr.Dispose(); `$PBA_gz.Dispose(); `$PBA_ms.Dispose()
+& ([ScriptBlock]::Create(`$PBA_code))
+"@
+            $SysprepCommands = [string[]]($Bootstrap -split '\r?\n')
+            Write-Output "Sysprep orchestration payload: $([math]::Round(($SysprepCommands -join "`n").Length / 1KB, 1)) KB (compressed)."
+
+            # executionTimeout must exceed the on-instance waits, and survive the exit-3010 reboot
+            # in InteractiveAutoLogon mode (readiness + reboot + autologon + generalize).
             $ssmCommand = Send-SSMCommand @AwsCredentialParams -Region $Region `
                 -InstanceId @($instanceId) `
                 -DocumentName "AWS-RunPowerShellScript" `
+                -Comment "PackerBaseAMI sysprep $PackerBuildId" `
                 -Parameter @{
-                    commands = @(
-                        "Start-Transcript -Path 'C:\ProgramData\Amazon\EC2Launch\log\PackerBaseAMI-SSM.log' -Force",
-                        "Write-Output 'Patching EC2Launch v2 config to remove installEgpuManager task (requires wmic.exe removed in Server 2025)...'",
-                        "`$configPath = 'C:\ProgramData\Amazon\EC2Launch\config\agent-config.yml'",
-                        "`$config = Get-Content -Path `$configPath -Raw",
-                        "Write-Output `"Original config length: `$(`$config.Length) characters`"",
-                        "`$config = `$config -replace '(?m)^\s*-\s*task:\s*installEgpuManager.*(\r?\n)', ''",
-                        "Set-Content -Path `$configPath -Value `$config -Force",
-                        "Write-Output 'installEgpuManager task removed from EC2Launch v2 config.'",
-                        "Write-Output 'Running EC2Launch v2 sysprep with shutdown...'",
-                        "Stop-Transcript",
-                        "& 'C:\Program Files\Amazon\EC2Launch\ec2launch.exe' sysprep --shutdown=true"
-                    )
+                    commands         = $SysprepCommands
+                    executionTimeout = @('10800')
                 }
 
             Write-Output "SSM Command sent (ID: $($ssmCommand.CommandId))."
-            Write-Output "Transcript log on instance: C:\ProgramData\Amazon\EC2Launch\log\PackerBaseAMI-SSM.log"
-            Write-Output "Packer (PID: $($PackerProcess.Id)) is waiting for shutdown, then will create the AMI."
+            Write-Output "On-instance logs: C:\ProgramData\Amazon\EC2Launch\log\PackerBaseAMI-SSM.log and PackerBaseAMI-SysprepIdentity.log"
+            if ($SysprepExecutionContext -eq 'InteractiveAutoLogon') {
+                Write-Output "The instance will reboot once (one-shot autologon as Administrator) before Sysprep runs."
+            }
+
+            # Poll the Run Command to a terminal state. This lets the build FAIL CLOSED: if Sysprep
+            # did not run correctly as the built-in Administrator we terminate the instance so Packer
+            # halts without registering an AMI, rather than baking a broken or SYSTEM-sysprepped one.
+            # Requires ssm:ListCommandInvocations (for Get-SSMCommandInvocation) in addition to
+            # ssm:SendCommand; ec2:TerminateInstances is already in Packer's minimal policy.
+            $terminalStatuses = @('Success', 'Failed', 'Cancelled', 'TimedOut')
+            $invocation = $null
+            $apiErrors = 0
+            $pollTimeout = (Get-Date).AddMinutes(185)
+            while ((Get-Date) -lt $pollTimeout) {
+                Start-Sleep -Seconds 15
+                try {
+                    $invocation = Get-SSMCommandInvocation @AwsCredentialParams -Region $Region `
+                        -CommandId $ssmCommand.CommandId -InstanceId $instanceId -Detail $true
+                    $apiErrors = 0
+                } catch {
+                    # Do not silently loop forever if e.g. ssm:ListCommandInvocations is missing.
+                    if ((++$apiErrors) -ge 8) {
+                        Write-Warning "Get-SSMCommandInvocation failed $apiErrors times ($($_.Exception.Message)); stopping polling."
+                        break
+                    }
+                    continue
+                }
+                if ($invocation -and $invocation.Status.Value -in $terminalStatuses) { break }
+                $instanceState = (Get-EC2Instance @AwsCredentialParams -Region $Region -InstanceId $instanceId).Instances[0].State.Name.Value
+                if ($instanceState -in @('stopping', 'stopped', 'terminated')) {
+                    # On success the orchestrator reports Success (exit 0) and only then schedules a
+                    # delayed shutdown, so re-read the status once before deciding: the instance can
+                    # reach 'stopping' just as a Success result becomes readable. This avoids
+                    # terminating a build that actually succeeded.
+                    try {
+                        $invocation = Get-SSMCommandInvocation @AwsCredentialParams -Region $Region `
+                            -CommandId $ssmCommand.CommandId -InstanceId $instanceId -Detail $true
+                    } catch { Write-Verbose "Final Get-SSMCommandInvocation failed: $($_.Exception.Message)" }
+                    break
+                }
+            }
+
+            if ($invocation) {
+                Write-Output "Run Command status: $($invocation.Status.Value) ($($invocation.StatusDetails))"
+                $invocation.CommandPlugins | ForEach-Object { if ($_.Output) { Write-Output $_.Output } }
+            }
+
+            if ($invocation -and $invocation.Status.Value -eq 'Success') {
+                Write-Output "Verified on-instance: Sysprep ran as the built-in Administrator and the image is generalized."
+                Write-Output "Packer (PID: $($PackerProcess.Id)) is waiting for shutdown, then will create the AMI."
+            } else {
+                $why = if ($invocation) { $invocation.Status.Value } else { 'unconfirmed' }
+                Write-Error "Sysprep orchestration did not succeed ($why). Terminating build instance $instanceId so Packer halts without creating an AMI. Review C:\ProgramData\Amazon\EC2Launch\log\PackerBaseAMI-SysprepIdentity.log (retrieve by attaching the root volume to a helper instance)."
+                try {
+                    Remove-EC2Instance @AwsCredentialParams -Region $Region -InstanceId $instanceId -Force | Out-Null
+                } catch {
+                    Write-Warning "Failed to terminate instance ${instanceId}: $($_.Exception.Message). Terminate it manually so it does not become an AMI."
+                }
+            }
         }
 
         Write-Output "This process will take roughly 20 minutes to complete. 10 minutes if you chose not to encrypt."

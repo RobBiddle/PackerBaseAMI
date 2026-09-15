@@ -30,8 +30,12 @@ Upon importing the module, a single PowerShell cmdlet named **New-PackerBaseAMI*
   - [Table of Contents](#table-of-contents)
   - [Install](#install)
   - [Windows Server 2022 / 2025 Requirements](#windows-server-2022--2025-requirements)
+    - [Why Sysprep must not run as SYSTEM on Server 2025](#why-sysprep-must-not-run-as-system-on-server-2025)
+    - [How the build runs Sysprep as the built-in Administrator](#how-the-build-runs-sysprep-as-the-built-in-administrator)
     - [Networking requirements for Windows Server 2022 / 2025 builds](#networking-requirements-for-windows-server-2022--2025-builds)
     - [IAM permissions for Windows Server 2022 / 2025 builds](#iam-permissions-for-windows-server-2022--2025-builds)
+    - [Verifying a new Server 2025 AMI](#verifying-a-new-server-2025-ami)
+    - [Repairing instances and AMIs already built](#repairing-instances-and-amis-already-built)
   - [GitHub Actions Usage](#github-actions-usage)
   - [Example](#example)
   - [Maintainer(s)](#maintainers)
@@ -87,25 +91,38 @@ Import-Module PackerBaseAMI
 
 ## Windows Server 2022 / 2025 Requirements
 
-Windows Server 2025 removed the `wmic.exe` utility, which EC2Launch v2 depends on during instance initialization. This causes EC2Launch v2 to fail at its `preReady` stage, which prevents UserData from executing and stops the instance from shutting down after sysprep. Recent Server 2022 base AMIs running the same EC2Launch v2 build hit the same class of `preReady` failure, so 2022 uses the same workaround.
+Windows Server 2022 and 2025 use EC2Launch v2, whose first-boot `preReady` stage no longer runs UserData reliably (Server 2025 removed `wmic.exe`, which the `installEgpuManager` task depends on). So for 2022/2025 the module drives the build with **SSM Run Command** instead of UserData:
 
-To work around this, the module uses a different build strategy for Windows Server 2022 and 2025:
+- The Packer template uses `communicator = "none"` with `disable_stop_instance = "true"`, so Packer just waits for the instance to reach the `stopped` state and then creates the AMI.
+- The instance is tagged with a unique `PackerBuildId` so the module can find it after launch.
+- After the SSM Agent comes online, the module sends an orchestration script that removes the `installEgpuManager` task (needs `wmic.exe`, gone in Server 2025), runs Sysprep **as the built-in Administrator**, verifies the image actually generalized, and reports back before shutdown.
 
-- **SSM Run Command** is used instead of UserData to execute commands on the instance
-- After Packer launches the instance, the module waits for the SSM Agent to come online, then **removes the `installEgpuManager` task** from the EC2Launch v2 configuration — this is the specific task that depends on `wmic.exe`
-- EC2Launch v2 then runs sysprep and shuts down the instance
-- The Packer template uses `communicator = "none"` with `disable_stop_instance = "true"`, so Packer waits for the instance to shut down on its own after sysprep completes
-- The instance is tagged with a unique `PackerBuildId` so the module can find it after launch
+### Why Sysprep must not run as SYSTEM on Server 2025
 
-SSM Agent runs as an independent Windows service that starts on boot regardless of EC2Launch v2 status. The config change persists in the AMI, so instances launched from it will not hit the same issue. The `installEgpuManager` task is only relevant for Elastic Graphics (eGPU) instances and is safe to remove for standard workloads.
+SSM `AWS-RunPowerShellScript` runs as `NT AUTHORITY\SYSTEM`. Microsoft does not support running Sysprep under the System account, and on Windows Server 2025 / Windows 11 24H2+ doing so **silently skips AppX registration for certain XAML packages**. The build succeeds and the AMI is created, but instances launched from it misbehave for users: the Start menu and Explorer crash, the Settings app fails to render, and the Office / Entra sign-in flow (which uses the Web Account Manager) crashes. The symptoms can appear on first sign-in or later after a cumulative update. See Microsoft's article: <https://learn.microsoft.com/en-us/troubleshoot/windows-client/setup-upgrade-and-drivers/sysprep-as-system-windows-11>.
 
-> **Note: the SSM Run Command will stay in "In Progress" until it times out — this is expected.** The last step of the SSM payload triggers `ec2launch.exe sysprep --shutdown=true`, which shuts down the OS (and the SSM Agent with it) before the agent can report completion to the Run Command API. SSM leaves the command in `InProgress` until its delivery timeout fires (default 1 hour) and then transitions it to `DeliveryTimedOut`. The actual success signal is the build instance reaching the `stopped` state and Packer creating the AMI from its root volume — not the Run Command status. This is a well-known consequence of running Send-SSMCommand payloads that reboot or shut down the target.
+Older Windows versions (2019, 2016, 2012) are not affected — they do not rely on these XAML packages — and they continue to build via UserData. Microsoft's "unsupported as Local System" guidance now spans Windows 10, Windows 11, and Windows Server 2022/2025, and there are field reports of Start-menu search breaking on Server 2022 instances built with a SYSTEM-context Sysprep, so **the module runs Sysprep as a non-SYSTEM administrator on both 2022 and 2025**.
 
-To make the SSM-based build self-contained, the module also:
+### How the build runs Sysprep as the built-in Administrator
 
-- Attaches a **temporary IAM instance profile** to the build instance (created and deleted by Packer for the duration of the build) granting `ssm:*`, `ssmmessages:*`, and `ec2messages:*`. This removes the dependency on Default Host Management Configuration (DHMC) being enabled in the account.
-- **Prefers a public subnet** when selecting where to launch the build instance, falling back to any subnet whose AZ supports the chosen instance type. This is so the SSM Agent has a network path to reach the SSM endpoints.
-- Sets `associate_public_ip_address = "true"` so the build instance gets a public IP even if the subnet's default doesn't auto-assign one.
+Because the Run Command itself is SYSTEM, the orchestration script hands Sysprep off to the built-in Administrator (RID 500). Two contexts are available, selected with `-SysprepExecutionContext`; if you do not specify one, the default is **`InteractiveAutoLogon` for Full (Desktop Experience) images of both 2022 and 2025**, and **`BatchLogon` for Core images**.
+
+- **`InteractiveAutoLogon`** (default for Full images) — the context with a reported-working outcome on Server 2025. Pass 1 arms a one-shot `AutoAdminLogon` as the built-in Administrator, registers a `RunOnce` launcher, and reboots (via SSM `exit 3010`). After the reboot, Sysprep runs in a **real interactive console session** as the Administrator. Pass 2 (SYSTEM) removes every autologon secret, rotates the Administrator password, and confirms the result.
+- **`BatchLogon`** (default for Core images; fallback for Full) — no reboot. This is AWS's own `AWSEC2-RunSysprep` pattern: a batch logon as the built-in Administrator (`LogonUser` + `LoadUserProfile` + `CreateProcessAsUser`) runs `ec2launch sysprep`. It is the default on Server Core, which has no Explorer shell for the `RunOnce` console launcher, and the fallback when `InteractiveAutoLogon` cannot work — for example an LSA-stored autologon password or an Exchange ActiveSync password policy that blocks autologon. (A `LegalNotice` logon banner does **not** require the fallback: the interactive path clears it for the one-shot autologon and restores it before Sysprep, so the banner is unchanged in the AMI.)
+
+In both contexts the orchestration:
+
+- waits until the image is genuinely ready to Sysprep (`ImageState = IMAGE_STATE_COMPLETE`, no pending servicing) before starting;
+- runs `ec2launch.exe sysprep --shutdown=false`, then **verifies the image generalized** (`ImageState = IMAGE_STATE_GENERALIZE_RESEAL_TO_OOBE`) before allowing the instance to shut down;
+- checks that `sysprep.exe` did **not** run as SYSTEM, and **fails the build** (killing the chain) if it did;
+- sets `CopyProfile = false` in the EC2Launch unattend file, so the build-time Administrator profile is not copied into the default profile of every future user;
+- writes proof of the effective identity to `C:\ProgramData\Amazon\EC2Launch\log\PackerBaseAMI-SysprepIdentity.log` (`whoami /all`, session id) alongside the transcript `PackerBaseAMI-SSM.log`.
+
+**Fail-closed:** the module polls the Run Command to a terminal state. Unlike earlier versions, the Run Command now finishes **`Success` or `Failed` before the instance shuts down**. If Sysprep did not run correctly as the built-in Administrator (or the result cannot be confirmed), the module **terminates the build instance**, so Packer halts without registering a broken or SYSTEM-sysprepped AMI. On success, the instance powers off ~120 seconds later and Packer bakes the AMI.
+
+As before, to make the SSM-based build self-contained the module also attaches a **temporary IAM instance profile** granting `ssm:*`, `ssmmessages:*`, `ec2messages:*` (removing the dependency on Default Host Management Configuration), **prefers a public subnet**, and sets `associate_public_ip_address = "true"`.
+
+> **Validated on Server 2025.** A `Windows_Server-2025-English-Full-Base` build using `InteractiveAutoLogon` completed with the Run Command reporting `Success` (Sysprep ran as the built-in Administrator, not SYSTEM, and the image generalized). On a fresh user profile on an instance launched from the resulting AMI, the Start menu works and `MicrosoftWindows.Client.CBS`, `Microsoft.UI.Xaml.CBS`, and `MicrosoftWindows.Client.Core` all report `Status = Ok`. This also settled a point AWS documents ambiguously — whether `ec2launch.exe sysprep` runs `sysprep.exe` in the caller's session or hands it to the SYSTEM-context EC2Launch service: it runs in the caller's session. The orchestration still checks the owner of `sysprep.exe` and fails the build (producing no AMI) if it is ever SYSTEM; if you see `SYSPREP_OWNER_SYSTEM`, open an issue.
 
 ### Networking requirements for Windows Server 2022 / 2025 builds
 
@@ -124,6 +141,11 @@ SSM:
 
 - `ssm:SendCommand`
 - `ssm:DescribeInstanceInformation`
+- `ssm:ListCommandInvocations` — used by `Get-SSMCommandInvocation` to poll the Run Command result so the build can fail closed.
+
+EC2 (for the fail-closed path):
+
+- `ec2:TerminateInstances` — already part of Packer's minimal EBS policy; the module uses it to terminate the build instance if Sysprep did not succeed, so Packer registers no AMI.
 
 IAM (for the temporary instance profile Packer creates and deletes around the build):
 
@@ -134,6 +156,30 @@ IAM (for the temporary instance profile Packer creates and deletes around the bu
 - `iam:PassRole`
 
 Older Windows Server versions (2019, 2016, 2012) are unaffected and do not require these additional permissions.
+
+### Verifying a new Server 2025 AMI
+
+Because the "working build, broken instances" symptom is silent, verify a newly built Server 2025 AMI before trusting it. The most rigorous check builds two images from the same source AMI: image **A** with the old behavior (Sysprep as SYSTEM) and image **B** with this version, and confirms A reproduces the failure while B is clean — otherwise the test cannot tell the two apart.
+
+On an instance launched from the AMI, sign in over RDP as the built-in Administrator, then as a **newly created** local user (the failure shows most clearly on fresh profiles), and check:
+
+- `Get-AppxPackage MicrosoftWindows.Client.CBS, Microsoft.UI.Xaml.CBS, MicrosoftWindows.Client.Core | Format-Table Name, Version, Status` — all present with `Status = Ok`.
+- The Start menu, taskbar search, and the Settings app open and render.
+- The Office / Entra sign-in dialog completes without crashing.
+- The Application event log has no `explorer.exe`, `StartMenuExperienceHost.exe`, `ShellHost.exe`, or `Microsoft.AAD.BrokerPlugin.exe` crash (event ID 1000) after first sign-in.
+- On the build itself, `C:\ProgramData\Amazon\EC2Launch\log\PackerBaseAMI-SysprepIdentity.log` shows `IDENTITY_OK` / `SYSPREP_OWNER_OK` / `SYSPREP_GENERALIZED` and a `whoami` that is the built-in Administrator, **not** `NT AUTHORITY\SYSTEM`.
+
+Also confirm the AMI is usable at all: launch it with a key pair and confirm `Get-EC2PasswordData` returns the Administrator password and the console shows `Windows is ready`.
+
+### Repairing instances and AMIs already built
+
+Instances already built with the SYSTEM-context Sysprep can be repaired per user with Microsoft's remediation, which this module ships as `Templates\Register-XamlPackages.ps1`. Run it **in the affected user's own session** (AppX registration is per-user); it re-registers the three XAML packages (add `-IncludeBrokerPlugin` to also re-register the Office/Entra broker) and restarts the shell:
+
+```PowerShell
+powershell.exe -ExecutionPolicy Bypass -File .\Register-XamlPackages.ps1 -IncludeBrokerPlugin
+```
+
+This fixes the current user, but a later cumulative update can re-trigger the problem, so the durable fix is to **rebuild the AMI** with this version. When building, you can also pass `-InstallXamlLogonMitigation` to bake a per-user logon task into the Server 2025 AMI that runs the same registration on every sign-in (defense in depth); it is **off by default** so you can first confirm the Sysprep-context change alone resolves the issue.
 
 ## GitHub Actions Usage
 
